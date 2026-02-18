@@ -37,6 +37,11 @@ export class NpcAiPlanner implements NpcPlanner {
       return this.fallback.decide(ctx, spec)
     }
 
+    if (ctx.state?.get<boolean>('ai:disable') === true) {
+      this.debug(ctx.npc.id, 'state_disabled_by_engine', {})
+      return this.fallback.decide(ctx, spec)
+    }
+
     const minInterval = this.budget?.minDecisionIntervalMs ?? 2000
     const lastAt = this.lastDecisionAt.get(ctx.npc.id) ?? 0
     if (Date.now() - lastAt < minInterval) {

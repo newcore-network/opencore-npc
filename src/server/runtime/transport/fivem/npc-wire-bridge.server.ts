@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { NpcExecuteSkillMsg, NpcSkillResultMsg } from '../../../../shared/contracts/npc-wire.contracts'
-
+ 
 export interface RpcLike {
   call(name: string, ...args: unknown[]): Promise<unknown>
 }

@@ -23,6 +23,18 @@ class NpcInternalClientController {
   async onExecuteSkill(msg: NpcExecuteSkillMsg) {
     return this.wire.onExecute(msg)
   }
+
+  @Client.OnNet('opencore:npc:execute-skill:net')
+  async onExecuteSkillNet(msg: NpcExecuteSkillMsg) {
+    const result = await this.wire.onExecute(msg)
+    const emitNetFn = (globalThis as Record<string, unknown>).emitNet
+    if (typeof emitNetFn === 'function') {
+      ;(emitNetFn as (eventName: string, payload: unknown) => void)(
+        'opencore:npc:execute-skill:net:result',
+        result,
+      )
+    }
+  }
 }
 
 /** Creates the optional NPC client plugin. */
@@ -40,6 +52,34 @@ export function npcClient(): OpenCoreClientPlugin {
       ctx.di.register(FiveMNpcExecutorClient, executor)
       ctx.di.register(NpcWireClient, wire)
       ctx.di.register(NpcInternalClientController, new NpcInternalClientController(bus, wire))
+
+      const g = globalThis as Record<string, unknown>
+      const onNetFn = g.onNet
+      const emitNetFn = g.emitNet
+
+      if (typeof onNetFn === 'function' && typeof emitNetFn === 'function') {
+        ;(onNetFn as (eventName: string, handler: (msg: NpcExecuteSkillMsg) => void) => void)(
+          'opencore:npc:execute-skill:net',
+          (msg: NpcExecuteSkillMsg) => {
+            void (async () => {
+              const result = await wire.onExecute(msg)
+              ;(emitNetFn as (eventName: string, payload: unknown) => void)(
+                'opencore:npc:execute-skill:net:result',
+                result,
+              )
+            })()
+          },
+        )
+      }
+
+      if (typeof emitNetFn === 'function') {
+        const emitReady = () => {
+          ;(emitNetFn as (eventName: string) => void)('opencore:npc:executor:ready')
+        }
+
+        emitReady()
+        setInterval(emitReady, 5000)
+      }
     },
   }
 }

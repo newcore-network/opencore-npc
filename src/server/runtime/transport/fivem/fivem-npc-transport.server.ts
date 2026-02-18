@@ -95,8 +95,8 @@ export class FiveMNpcTransportServer implements NpcTransport {
     },
   ): Promise<void> {
     const delegated = await this.tryDelegate(npc, 'driveTo', req)
-    if (delegated) return
-    throw new Error('driveTo requires connected mode executor in current server transport')
+    if (delegated.ok) return
+    throw new Error(`driveTo requires connected mode executor in current server transport (${delegated.reason})`)
   }
 
   async parkVehicle(
@@ -104,8 +104,8 @@ export class FiveMNpcTransportServer implements NpcTransport {
     req: { heading?: number; stopEngine: boolean; handbrake: boolean },
   ): Promise<void> {
     const delegated = await this.tryDelegate(npc, 'parkVehicle', req)
-    if (delegated) return
-    throw new Error('parkVehicle requires connected mode executor in current server transport')
+    if (delegated.ok) return
+    throw new Error(`parkVehicle requires connected mode executor in current server transport (${delegated.reason})`)
   }
 
   isWaitSatisfied(
@@ -179,9 +179,14 @@ export class FiveMNpcTransportServer implements NpcTransport {
     return netId
   }
 
-  private async tryDelegate(npc: NpcIdentity, skill: string, args: unknown): Promise<boolean> {
+  private async tryDelegate(
+    npc: NpcIdentity,
+    skill: string,
+    args: unknown,
+  ): Promise<{ ok: true } | { ok: false; reason: string }> {
     if (!this.options?.wireBridge || !this.options?.chooseExecutorClient) {
-      return false
+      this.debugDelegation('FAIL', { skill, npcId: npc.id, reason: 'connected_disabled' })
+      return { ok: false, reason: 'connected_disabled' }
     }
 
     const executor = this.options.chooseExecutorClient(npc)
@@ -195,21 +200,63 @@ export class FiveMNpcTransportServer implements NpcTransport {
     }
 
     if (!executor || !netId) {
-      return false
+      const reason = !executor ? 'no_executor' : 'missing_npc_netid'
+      this.debugDelegation('FAIL', { skill, npcId: npc.id, reason, executor, netId })
+      return { ok: false, reason }
     }
 
-    await this.options.wireBridge.executeSkill(
-      executor,
-      {
-        npcNetId: netId,
-        skill,
-        args,
-      },
-      4_500,
-    )
+    this.debugDelegation('SEND', { skill, npcId: npc.id, npcNetId: netId, executor })
 
+    try {
+      await this.options.wireBridge.executeSkill(
+        executor,
+        {
+          npcNetId: netId,
+          skill,
+          args,
+        },
+        4_500,
+      )
+    } catch (error) {
+      this.debugDelegation('FAIL', {
+        skill,
+        npcId: npc.id,
+        npcNetId: netId,
+        executor,
+        reason: error instanceof Error ? error.message : String(error),
+      })
+      throw error
+    }
+
+    this.debugDelegation('OK', { skill, npcId: npc.id, npcNetId: netId, executor })
+
+    return { ok: true }
+  }
+
+  private debugDelegation(stage: 'SEND' | 'OK' | 'FAIL', payload: unknown): void {
+    if (!isTransportDebugEnabled()) {
+      return
+    }
+
+    try {
+      console.log(`[npc:transport][DELEGATE][${stage}]`, payload)
+    } catch {
+      console.log(`[npc:transport][DELEGATE][${stage}]`)
+    }
+  }
+}
+
+function isTransportDebugEnabled(): boolean {
+  if (process.env.OPENCORE_NPC_TRANSPORT_DEBUG === '1') {
     return true
   }
+
+  const getConvar = (globalThis as Record<string, unknown>).GetConvar
+  if (typeof getConvar === 'function') {
+    return String((getConvar as (name: string, fallback: string) => string)('OPENCORE_NPC_TRANSPORT_DEBUG', '0')) === '1'
+  }
+
+  return false
 }
 
 function distance(a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }): number {

@@ -38,9 +38,20 @@ export class NpcEngine {
       return
     }
 
+    const allowSkills = agent.constraints.getAllowlist()
+    if (this.areAllAllowedSkillsInCooldown(agent, allowSkills)) {
+      if (this.shouldReportCooldown(agent, '__all__')) {
+        this.hooks.emit('decisionRejected', ctx, {
+          decision: { type: 'skill', skill: allowSkills.join(','), args: {} },
+          report: { allowed: false, reasons: ['all allowed skills are in cooldown'] },
+        })
+      }
+      return
+    }
+
     this.hooks.emit('beforePlan', ctx)
     const decision = await agent.planner.decide(ctx, {
-      allowSkills: agent.constraints.getAllowlist(),
+      allowSkills,
     })
     this.hooks.emit('afterPlan', ctx, { decision })
 
@@ -77,8 +88,10 @@ export class NpcEngine {
       return
     }
 
+    const normalizedArgs = this.normalizeDecisionArgs(agent, decision.skill, decision.args)
+
     if (selectedSkill.validate) {
-      const parsed = tryValidate(selectedSkill.validate, decision.args)
+      const parsed = tryValidate(selectedSkill.validate, normalizedArgs)
       if (!parsed.ok) {
         const validationError = `invalidSkillArgs: ${parsed.error}`
         this.hooks.emit('decisionRejected', ctx, {
@@ -87,11 +100,12 @@ export class NpcEngine {
         })
         this.events.emit('npc:error', agent.npc.id, { skill: decision.skill, error: validationError }, { scope: 'server' })
         this.markSkillCooldown(agent, decision.skill, this.resolveCooldownMs(validationError))
+        agent.state.set('ai:disable', true)
         return
       }
     }
 
-    await this.runSkill(agent, decision.skill, decision.args)
+    await this.runSkill(agent, decision.skill, normalizedArgs)
   }
 
   private isWaiting(agent: NpcAgent): boolean {
@@ -197,7 +211,8 @@ export class NpcEngine {
       return false
     }
 
-    agent.state.set(reportKey, now + 5_000)
+    const windowMs = skillKey === '__all__' ? 180_000 : 5_000
+    agent.state.set(reportKey, now + windowMs)
     return true
   }
 
@@ -209,6 +224,47 @@ export class NpcEngine {
       return 10_000
     }
     return 3_000
+  }
+
+  private areAllAllowedSkillsInCooldown(agent: NpcAgent, skills: string[]): boolean {
+    if (skills.length === 0) return false
+    return skills.every((skill) => this.isSkillCoolingDown(agent, skill))
+  }
+
+  private normalizeDecisionArgs(agent: NpcAgent, skill: string, args: unknown): unknown {
+    if (skill !== 'goToCarDrivePark') {
+      return args
+    }
+
+    if (!args || typeof args !== 'object') {
+      return args
+    }
+
+    const src = args as Record<string, unknown>
+    const out: Record<string, unknown> = { ...src }
+
+    if (!out.dest && src.destination && typeof src.destination === 'object') {
+      out.dest = src.destination
+    }
+
+    if (typeof out.vehicleNetId !== 'number') {
+      const observedVeh = agent.observations.assignedVeh
+      if (observedVeh && typeof observedVeh === 'object') {
+        const netId = (observedVeh as { netId?: unknown }).netId
+        if (typeof netId === 'number') {
+          out.vehicleNetId = netId
+        }
+      }
+    }
+
+    if (!out.dest) {
+      const observedDest = agent.observations.dest
+      if (observedDest && typeof observedDest === 'object') {
+        out.dest = observedDest
+      }
+    }
+
+    return out
   }
 
   private buildCtx(agent: NpcAgent) {
