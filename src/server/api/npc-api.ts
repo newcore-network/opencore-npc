@@ -8,6 +8,7 @@ import type { NpcConstraints } from '../runtime/constraints/npc-constraints'
 import { NpcEntityService } from '../runtime/entities/npc-entity.service'
 import { NpcRuntimeService } from '../runtime/runtime/npc-runtime.service'
 import { NpcControllerRuntime } from '../runtime/controllers/npc-controller.runtime'
+import { skillRef } from '../contracts/npc-skill-ref.types'
 
 export class NpcApi {
   private readonly agents = new Map<string, NpcAgent>()
@@ -17,7 +18,7 @@ export class NpcApi {
     private readonly entities: NpcEntityService,
     private readonly runtime: NpcRuntimeService,
     private readonly controllers: NpcControllerRuntime,
-  ) {}
+  ) { }
 
   /** Creates a physical NPC entity and returns its identity. */
   async spawn(input: NpcSpawnInput): Promise<NpcIdentity> {
@@ -60,7 +61,7 @@ export class NpcApi {
     const agent = new NpcAgentBuilder(npc, goal, planner).withConstraints(configureConstraints).build()
 
     if (controllerDef?.allowSkills?.length) {
-      agent.constraints.allow(...controllerDef.allowSkills)
+      agent.constraints.allow(...controllerDef.allowSkills.map((skill) => skillRef(skill)))
     }
 
     this.agents.set(npc.id, agent)
@@ -126,7 +127,7 @@ export class NpcObservationHandle<TObservation extends Record<string, unknown>> 
   constructor(
     private readonly api: NpcApi,
     private readonly npc: NpcIdentity,
-  ) {}
+  ) { }
 
   set(patch: Partial<TObservation> & Record<string, unknown>): this {
     this.api.setObservation<TObservation>(this.npc, patch)
@@ -138,7 +139,7 @@ export class NpcAgentHandle {
   constructor(
     private readonly api: NpcApi,
     private readonly npc: NpcIdentity,
-  ) {}
+  ) { }
 
   run(): Promise<void> {
     return this.api.run(this.npc)
@@ -160,33 +161,17 @@ export function setNpcApiSingleton(api: NpcApi): void {
 }
 
 export const Npc = {
-  /** Human-readable alias for `spawn`. */
-  create(input: NpcSpawnInput) {
-    return requireSingleton().spawn(input)
-  },
   /** Spawns an NPC using the installed singleton API. */
   spawn(input: NpcSpawnInput) {
     return requireSingleton().spawn(input)
-  },
-  /** Human-readable alias for `destroy`. */
-  remove(npc: NpcIdentity) {
-    return requireSingleton().destroy(npc)
   },
   /** Destroys an NPC and clears runtime state. */
   destroy(npc: NpcIdentity) {
     return requireSingleton().destroy(npc)
   },
-  /** Human-readable alias for `attach`. */
-  mount(npc: NpcIdentity, options?: Parameters<NpcApi['attach']>[1]) {
-    return requireSingleton().attach(npc, options)
-  },
   /** Attaches an NPC to a planner/controller pipeline. */
   attach(npc: NpcIdentity, options?: Parameters<NpcApi['attach']>[1]) {
     return requireSingleton().attach(npc, options)
-  },
-  /** Human-readable alias for `detach`. */
-  unmount(npc: NpcIdentity) {
-    return requireSingleton().detach(npc)
   },
   /** Detaches an NPC from runtime scheduling. */
   detach(npc: NpcIdentity) {

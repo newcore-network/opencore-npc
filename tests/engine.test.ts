@@ -4,6 +4,7 @@ import { NpcSkillRegistry } from '../src/server/runtime/engine/npc-skill-registr
 import { NpcHookBusServer } from '../src/server/runtime/events/npc-hook-bus.server'
 import { NpcEventBusServer } from '../src/server/runtime/events/npc-event-bus.server'
 import { NpcConstraints } from '../src/server/runtime/constraints/npc-constraints'
+import { skillRef } from '../src/server/contracts/npc-skill-ref.types'
 import type { NpcAgent } from '../src/server/runtime/engine/npc-agent'
 import type { NpcPlanner } from '../src/server/runtime/planner/npc-planner.interface'
 
@@ -12,7 +13,12 @@ function createAgent(planner: NpcPlanner): NpcAgent {
     npc: { id: 'npc-1' },
     goal: { id: 'test' },
     planner,
-    constraints: new NpcConstraints().allow('okSkill', 'waitSkill', 'replanSkill', 'errorSkill'),
+    constraints: new NpcConstraints().allow(
+      skillRef('okSkill'),
+      skillRef('waitSkill'),
+      skillRef('replanSkill'),
+      skillRef('errorSkill'),
+    ),
     observations: {},
     memory: [],
     state: new Map(),

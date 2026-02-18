@@ -7,6 +7,7 @@ import type {
   NpcControllerContract,
   SkillAllowApi,
 } from '../../contracts/npc-controller.types'
+import { skillKeyOf, type NpcSkillLike } from '../../contracts/npc-skill-ref.types'
 import type { NpcHookName } from '../../decorators/npc-hook.decorator'
 import type { NpcPlanner } from '../planner/npc-planner.interface'
 import type { NpcConstraints } from '../constraints/npc-constraints'
@@ -41,15 +42,15 @@ class NpcControllerConfigBuilder implements NpcAgentConfigurator {
     return this
   }
 
-  allowSkills(...skills: string[]) {
-    this.definition.allowSkills.push(...skills)
+  allowSkills(...skills: NpcSkillLike[]) {
+    this.definition.allowSkills.push(...skills.map((skill) => skillKeyOf(skill)))
     return this
   }
 
   skills(configure: (api: SkillAllowApi) => unknown) {
     const api: SkillAllowApi = {
-      allow: (...skills: string[]) => {
-        this.definition.allowSkills.push(...skills)
+      allow: (...skills: NpcSkillLike[]) => {
+        this.definition.allowSkills.push(...skills.map((skill) => skillKeyOf(skill)))
         return api
       },
     }

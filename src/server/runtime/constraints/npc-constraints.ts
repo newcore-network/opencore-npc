@@ -1,4 +1,5 @@
 import type { ConstraintReport } from './npc-constraint-report'
+import { skillKeyOf, type NpcSkillLike } from '../../contracts/npc-skill-ref.types'
 
 type Decision = { skill: string }
 type ValidatorContext = { state: Map<string, any>; turnCalls: number; tagsBySkill?: Record<string, string[]> }
@@ -13,20 +14,23 @@ export class NpcConstraints {
   private maxCallsPerTurn = Number.POSITIVE_INFINITY
 
   /** Adds skills to the explicit allowlist. */
-  allow(...skills: string[]): this {
-    for (const skill of skills) this.allowSkillsSet.add(skill)
+  allow(...skills: NpcSkillLike[]): this {
+    for (const skill of skills) this.allowSkillsSet.add(skillKeyOf(skill))
     return this
   }
 
   /** Adds skills to the explicit denylist. */
-  forbidSkills(...skills: string[]): this {
-    for (const skill of skills) this.forbidden.add(skill)
+  forbidSkills(...skills: NpcSkillLike[]): this {
+    for (const skill of skills) this.forbidden.add(skillKeyOf(skill))
     return this
   }
 
   /** Declares a named mutual exclusion group. */
-  mutexGroup(key: string, skills: string[]): this {
-    this.mutexGroups.set(key, new Set(skills))
+  mutexGroup(key: string, skills: NpcSkillLike[]): this {
+    this.mutexGroups.set(
+      key,
+      new Set(skills.map((skill) => skillKeyOf(skill))),
+    )
     return this
   }
 
@@ -37,10 +41,11 @@ export class NpcConstraints {
   }
 
   /** Adds a precondition predicate for a specific skill. */
-  require(skill: string, predicate: RequirePredicate): this {
-    const list = this.required.get(skill) ?? []
+  require(skill: NpcSkillLike, predicate: RequirePredicate): this {
+    const skillKey = skillKeyOf(skill)
+    const list = this.required.get(skillKey) ?? []
     list.push(predicate)
-    this.required.set(skill, list)
+    this.required.set(skillKey, list)
     return this
   }
 

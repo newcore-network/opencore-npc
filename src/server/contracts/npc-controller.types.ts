@@ -1,16 +1,17 @@
 import type { NpcPlanner } from '../runtime/planner/npc-planner.interface'
+import type { NpcSkillLike } from './npc-skill-ref.types'
 
 /** Fluent API to define allowed skills in a controller. */
 export type SkillAllowApi = {
-  allow(...skills: string[]): SkillAllowApi
+  allow(...skills: NpcSkillLike[]): SkillAllowApi
 }
 
 /** Fluent API to define runtime constraints in a controller. */
 export type ConstraintApi = {
-  allow(...skills: string[]): ConstraintApi
+  allow(...skills: NpcSkillLike[]): ConstraintApi
   limitCallsPerTurn(limit: number): ConstraintApi
-  mutexGroup(key: string, skills: string[]): ConstraintApi
-  require(skill: string, predicate: (ctx: { state: Map<string, unknown>; turnCalls: number }) => boolean): ConstraintApi
+  mutexGroup(key: string, skills: NpcSkillLike[]): ConstraintApi
+  require(skill: NpcSkillLike, predicate: (ctx: { state: Map<string, unknown>; turnCalls: number }) => boolean): ConstraintApi
 }
 
 /**
@@ -25,7 +26,7 @@ export type NpcAgentConfigurator = {
   /** Legacy alias for `planWith`. */
   usePlanner(primary: NpcPlanner, fallback?: NpcPlanner): NpcAgentConfigurator
   /** Preferred readable API. */
-  allowSkills(...skills: string[]): NpcAgentConfigurator
+  allowSkills(...skills: NpcSkillLike[]): NpcAgentConfigurator
   skills(configure: (skills: SkillAllowApi) => unknown): NpcAgentConfigurator
   /** Preferred readable API. */
   withConstraints(configure: (constraints: ConstraintApi) => unknown): NpcAgentConfigurator
