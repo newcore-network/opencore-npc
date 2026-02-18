@@ -32,8 +32,17 @@ class NpcControllerConfigBuilder implements NpcAgentConfigurator {
     }
   }
 
+  planWith(primary: NpcPlanner, fallback?: NpcPlanner) {
+    return this.usePlanner(primary, fallback)
+  }
+
   usePlanner(primary: NpcPlanner, _fallback?: NpcPlanner) {
     this.definition.planner = primary
+    return this
+  }
+
+  allowSkills(...skills: string[]) {
+    this.definition.allowSkills.push(...skills)
     return this
   }
 
@@ -46,6 +55,10 @@ class NpcControllerConfigBuilder implements NpcAgentConfigurator {
     }
     configure(api)
     return this
+  }
+
+  withConstraints(configure: (constraints: ConstraintApi) => unknown) {
+    return this.constraints(configure)
   }
 
   constraints(configure: (constraints: ConstraintApi) => unknown) {

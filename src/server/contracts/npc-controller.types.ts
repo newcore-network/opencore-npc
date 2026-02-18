@@ -20,8 +20,15 @@ export type ConstraintApi = {
  * This type is intended for consumers implementing NPC controllers.
  */
 export type NpcAgentConfigurator = {
+  /** Preferred readable API. */
+  planWith(primary: NpcPlanner, fallback?: NpcPlanner): NpcAgentConfigurator
+  /** Legacy alias for `planWith`. */
   usePlanner(primary: NpcPlanner, fallback?: NpcPlanner): NpcAgentConfigurator
+  /** Preferred readable API. */
+  allowSkills(...skills: string[]): NpcAgentConfigurator
   skills(configure: (skills: SkillAllowApi) => unknown): NpcAgentConfigurator
+  /** Preferred readable API. */
+  withConstraints(configure: (constraints: ConstraintApi) => unknown): NpcAgentConfigurator
   constraints(configure: (constraints: ConstraintApi) => unknown): NpcAgentConfigurator
   context(configure: (_api: unknown) => unknown): NpcAgentConfigurator
 }

@@ -1,5 +1,6 @@
 import type { NpcTransport } from '../npc-transport.interface'
 import type { NpcIdentity } from '../../../../shared/contracts/npc-types'
+import { debugTransport } from './transport-debug'
 
 /** Connected-mode bridge used to delegate execution to a client. */
 export interface NpcWireBridgePort {
@@ -17,6 +18,8 @@ export interface NpcWireBridgePort {
  * Uses server natives where available and connected delegation for client-only tasks.
  */
 export class FiveMNpcTransportServer implements NpcTransport {
+  private readonly delegatedDrivePlanByNpc = new Map<string, { x: number; y: number; z: number; satisfyAt: number }>()
+
   constructor(
     private readonly options?: {
       wireBridge?: NpcWireBridgePort
@@ -95,7 +98,10 @@ export class FiveMNpcTransportServer implements NpcTransport {
     },
   ): Promise<void> {
     const delegated = await this.tryDelegate(npc, 'driveTo', req)
-    if (delegated.ok) return
+    if (delegated.ok) {
+      this.planOptimisticNearDestination(npc, req)
+      return
+    }
     throw new Error(`driveTo requires connected mode executor in current server transport (${delegated.reason})`)
   }
 
@@ -104,7 +110,10 @@ export class FiveMNpcTransportServer implements NpcTransport {
     req: { heading?: number; stopEngine: boolean; handbrake: boolean },
   ): Promise<void> {
     const delegated = await this.tryDelegate(npc, 'parkVehicle', req)
-    if (delegated.ok) return
+    if (delegated.ok) {
+      this.delegatedDrivePlanByNpc.delete(npc.id)
+      return
+    }
     throw new Error(`parkVehicle requires connected mode executor in current server transport (${delegated.reason})`)
   }
 
@@ -139,7 +148,21 @@ export class FiveMNpcTransportServer implements NpcTransport {
       const target = state?.get<{ x: number; y: number; z: number }>('targetDest')
       if (!target) return false
       const current = this.getCoords(ped)
-      return distance(current, target) <= 8
+      if (distance(current, target) <= 8) {
+        return true
+      }
+
+      const optimistic = this.delegatedDrivePlanByNpc.get(npc.id)
+      if (!optimistic) {
+        return false
+      }
+
+      const targetMismatch = distance(target, optimistic) > 12
+      if (targetMismatch) {
+        return false
+      }
+
+      return Date.now() >= optimistic.satisfyAt
     }
 
     return false
@@ -234,29 +257,30 @@ export class FiveMNpcTransportServer implements NpcTransport {
   }
 
   private debugDelegation(stage: 'SEND' | 'OK' | 'FAIL', payload: unknown): void {
-    if (!isTransportDebugEnabled()) {
-      return
-    }
-
-    try {
-      console.log(`[npc:transport][DELEGATE][${stage}]`, payload)
-    } catch {
-      console.log(`[npc:transport][DELEGATE][${stage}]`)
-    }
-  }
-}
-
-function isTransportDebugEnabled(): boolean {
-  if (process.env.OPENCORE_NPC_TRANSPORT_DEBUG === '1') {
-    return true
+    debugTransport(
+      stage === 'SEND' ? 'DELEGATE_SEND' : stage === 'OK' ? 'DELEGATE_OK' : 'DELEGATE_FAIL',
+      payload,
+    )
   }
 
-  const getConvar = (globalThis as Record<string, unknown>).GetConvar
-  if (typeof getConvar === 'function') {
-    return String((getConvar as (name: string, fallback: string) => string)('OPENCORE_NPC_TRANSPORT_DEBUG', '0')) === '1'
-  }
+  private planOptimisticNearDestination(
+    npc: NpcIdentity,
+    req: { x: number; y: number; z: number; speed: number },
+  ): void {
+    const ped = npc?.ped
+    const current = ped && this.doesEntityExist(ped) ? this.getCoords(ped) : { x: req.x, y: req.y, z: req.z }
+    const meters = distance(current, req)
+    const speed = Math.max(5, req.speed)
+    const travelMs = Math.min(60_000, Math.max(4_000, (meters / speed) * 1000))
+    const settleMs = 3_000
 
-  return false
+    this.delegatedDrivePlanByNpc.set(npc.id, {
+      x: req.x,
+      y: req.y,
+      z: req.z,
+      satisfyAt: Date.now() + travelMs + settleMs,
+    })
+  }
 }
 
 function distance(a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }): number {

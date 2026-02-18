@@ -75,13 +75,26 @@ export class NpcApi {
   }
 
   /** Merges observation data into an attached NPC agent. */
-  setObservation(npc: NpcIdentity, patch: Record<string, unknown>): void {
+  setObservation<TObservation extends Record<string, unknown>>(
+    npc: NpcIdentity,
+    patch: Partial<TObservation> & Record<string, unknown>,
+  ): void {
     const agent = this.requireAgent(npc.id)
     agent.observations = { ...agent.observations, ...patch }
 
     for (const [key, value] of Object.entries(patch)) {
       agent.state.set(`obs.${key}`, value)
     }
+  }
+
+  /** Creates a fluent observation handle for one NPC. */
+  observe<TObservation extends Record<string, unknown>>(npc: NpcIdentity): NpcObservationHandle<TObservation> {
+    return new NpcObservationHandle<TObservation>(this, npc)
+  }
+
+  /** Creates a fluent runtime handle for one NPC agent. */
+  agent(npc: NpcIdentity): NpcAgentHandle {
+    return new NpcAgentHandle(this, npc)
   }
 
   /** Returns a previously attached agent, if available. */
@@ -109,6 +122,37 @@ export class NpcApi {
   }
 }
 
+export class NpcObservationHandle<TObservation extends Record<string, unknown>> {
+  constructor(
+    private readonly api: NpcApi,
+    private readonly npc: NpcIdentity,
+  ) {}
+
+  set(patch: Partial<TObservation> & Record<string, unknown>): this {
+    this.api.setObservation<TObservation>(this.npc, patch)
+    return this
+  }
+}
+
+export class NpcAgentHandle {
+  constructor(
+    private readonly api: NpcApi,
+    private readonly npc: NpcIdentity,
+  ) {}
+
+  run(): Promise<void> {
+    return this.api.run(this.npc)
+  }
+
+  memory(): unknown[] {
+    return this.api.memory(this.npc)
+  }
+
+  raw(): NpcAgent | undefined {
+    return this.api.getAgent(this.npc.id)
+  }
+}
+
 let singleton: NpcApi | undefined
 
 export function setNpcApiSingleton(api: NpcApi): void {
@@ -116,25 +160,49 @@ export function setNpcApiSingleton(api: NpcApi): void {
 }
 
 export const Npc = {
+  /** Human-readable alias for `spawn`. */
+  create(input: NpcSpawnInput) {
+    return requireSingleton().spawn(input)
+  },
   /** Spawns an NPC using the installed singleton API. */
   spawn(input: NpcSpawnInput) {
     return requireSingleton().spawn(input)
+  },
+  /** Human-readable alias for `destroy`. */
+  remove(npc: NpcIdentity) {
+    return requireSingleton().destroy(npc)
   },
   /** Destroys an NPC and clears runtime state. */
   destroy(npc: NpcIdentity) {
     return requireSingleton().destroy(npc)
   },
+  /** Human-readable alias for `attach`. */
+  mount(npc: NpcIdentity, options?: Parameters<NpcApi['attach']>[1]) {
+    return requireSingleton().attach(npc, options)
+  },
   /** Attaches an NPC to a planner/controller pipeline. */
   attach(npc: NpcIdentity, options?: Parameters<NpcApi['attach']>[1]) {
     return requireSingleton().attach(npc, options)
+  },
+  /** Human-readable alias for `detach`. */
+  unmount(npc: NpcIdentity) {
+    return requireSingleton().detach(npc)
   },
   /** Detaches an NPC from runtime scheduling. */
   detach(npc: NpcIdentity) {
     return requireSingleton().detach(npc)
   },
+  /** Fluent observation API. */
+  observe<TObservation extends Record<string, unknown>>(npc: NpcIdentity) {
+    return requireSingleton().observe<TObservation>(npc)
+  },
   /** Applies an observation patch to one NPC. */
   setObservation(npc: NpcIdentity, patch: Record<string, unknown>) {
     return requireSingleton().setObservation(npc, patch)
+  },
+  /** Fluent agent API. */
+  agent(npc: NpcIdentity) {
+    return requireSingleton().agent(npc)
   },
   /** Runs one tick for one NPC. */
   run(npc: NpcIdentity) {
