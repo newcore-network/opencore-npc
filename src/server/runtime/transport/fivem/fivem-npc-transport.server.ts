@@ -26,6 +26,7 @@ export class FiveMNpcTransportServer implements NpcTransport {
     private readonly options?: {
       wireBridge?: NpcWireBridgePort
       chooseExecutorClient?: (npc: NpcIdentity) => number | undefined
+      chooseExecutorCandidates?: (npc: NpcIdentity) => number[]
     },
   ) {}
 
@@ -122,6 +123,15 @@ export class FiveMNpcTransportServer implements NpcTransport {
       this.planOptimisticNearDestination(npc, req)
       return
     }
+
+    const ped = this.requirePed(npc)
+    const vehicle = GetVehiclePedIsIn(ped, false)
+    if (vehicle && vehicle !== 0 && typeof (globalThis as Record<string, unknown>).TaskVehicleDriveToCoordLongrange === 'function') {
+      TaskVehicleDriveToCoordLongrange(ped, vehicle, req.x, req.y, req.z, req.speed, req.drivingStyle, req.stoppingRange)
+      this.planOptimisticNearDestination(npc, req)
+      return
+    }
+
     throw new Error(`driveTo requires connected mode executor in current server transport (${delegated.reason})`)
   }
 
@@ -134,6 +144,26 @@ export class FiveMNpcTransportServer implements NpcTransport {
       this.delegatedDrivePlanByNpc.delete(npc.id)
       return
     }
+
+    const ped = this.requirePed(npc)
+    const vehicle = GetVehiclePedIsIn(ped, false)
+    if (vehicle && vehicle !== 0 && typeof (globalThis as Record<string, unknown>).TaskVehiclePark === 'function') {
+      const coords = this.getCoords(vehicle)
+      TaskVehiclePark(
+        ped,
+        vehicle,
+        coords.x,
+        coords.y,
+        coords.z,
+        req.heading ?? GetEntityHeading(vehicle),
+        0,
+        3,
+        !req.stopEngine,
+      )
+      this.delegatedDrivePlanByNpc.delete(npc.id)
+      return
+    }
+
     throw new Error(`parkVehicle requires connected mode executor in current server transport (${delegated.reason})`)
   }
 
@@ -261,7 +291,7 @@ export class FiveMNpcTransportServer implements NpcTransport {
       return { ok: false, reason: 'connected_disabled' }
     }
 
-    const executor = this.options.chooseExecutorClient(npc)
+    const candidates = this.collectExecutorCandidates(npc)
     let netId = npc.netId
     if ((!netId || netId <= 0) && npc.ped && typeof (globalThis as Record<string, unknown>).NetworkGetNetworkIdFromEntity === 'function') {
       const resolvedNetId = NetworkGetNetworkIdFromEntity(npc.ped)
@@ -271,38 +301,62 @@ export class FiveMNpcTransportServer implements NpcTransport {
       }
     }
 
-    if (!executor || !netId) {
-      const reason = !executor ? 'no_executor' : 'missing_npc_netid'
-      this.debugDelegation('FAIL', { skill, npcId: npc.id, reason, executor, netId })
+    if (candidates.length === 0 || !netId) {
+      const reason = candidates.length === 0 ? 'no_executor' : 'missing_npc_netid'
+      this.debugDelegation('FAIL', { skill, npcId: npc.id, reason, executorCandidates: candidates, netId })
       return { ok: false, reason }
     }
 
-    this.debugDelegation('SEND', { skill, npcId: npc.id, npcNetId: netId, executor })
+    let lastError = 'delegation_failed'
+    for (const executor of candidates) {
+      this.debugDelegation('SEND', { skill, npcId: npc.id, npcNetId: netId, executor })
 
-    try {
-      await this.options.wireBridge.executeSkill(
-        executor,
-        {
-          npcNetId: netId,
+      try {
+        await this.options.wireBridge.executeSkill(
+          executor,
+          {
+            npcNetId: netId,
+            skill,
+            args,
+          },
+          4_500,
+        )
+        this.debugDelegation('OK', { skill, npcId: npc.id, npcNetId: netId, executor })
+        return { ok: true }
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error)
+        this.debugDelegation('FAIL', {
           skill,
-          args,
-        },
-        4_500,
-      )
-    } catch (error) {
-      this.debugDelegation('FAIL', {
-        skill,
-        npcId: npc.id,
-        npcNetId: netId,
-        executor,
-        reason: error instanceof Error ? error.message : String(error),
-      })
-      throw error
+          npcId: npc.id,
+          npcNetId: netId,
+          executor,
+          reason: lastError,
+        })
+
+        if (!isStreamingFailure(lastError)) {
+          throw error
+        }
+      }
     }
 
-    this.debugDelegation('OK', { skill, npcId: npc.id, npcNetId: netId, executor })
+    return { ok: false, reason: lastError }
+  }
 
-    return { ok: true }
+  private collectExecutorCandidates(npc: NpcIdentity): number[] {
+    const preferred = this.options?.chooseExecutorClient?.(npc)
+    const fromList = this.options?.chooseExecutorCandidates?.(npc) ?? []
+    const out: number[] = []
+    const seen = new Set<number>()
+
+    const push = (id: number | undefined) => {
+      if (!id || !Number.isFinite(id) || id <= 0 || seen.has(id)) return
+      seen.add(id)
+      out.push(id)
+    }
+
+    push(preferred)
+    for (const candidate of fromList) push(candidate)
+    return out
   }
 
   private debugDelegation(stage: 'SEND' | 'OK' | 'FAIL', payload: unknown): void {
@@ -344,6 +398,11 @@ export class FiveMNpcTransportServer implements NpcTransport {
       satisfyAt: Date.now() + 1_800,
     })
   }
+}
+
+function isStreamingFailure(reason: string): boolean {
+  const normalized = reason.toLowerCase()
+  return normalized.includes('not streamed') || normalized.includes('no object by id')
 }
 
 function distance(a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }): number {

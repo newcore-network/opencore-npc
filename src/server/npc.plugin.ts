@@ -60,12 +60,18 @@ export function npcPlugin(options?: NpcPluginOptions): OpenCorePlugin {
 
       const chooseExecutorClient = (_npc: NpcIdentity): number | undefined =>
         executorRegistry?.chooseAnyReadyOrFirstPlayer()
+      const chooseExecutorCandidates = (_npc: NpcIdentity): number[] =>
+        executorRegistry?.chooseCandidates() ?? []
 
       const preferredAdapter = resolveAdapterPreference(options?.adapter)
       const transport =
         preferredAdapter === 'redm'
           ? new RedMNpcTransportServer({ wireBridge: wireBridgeWithFallback, chooseExecutorClient })
-          : new FiveMNpcTransportServer({ wireBridge: wireBridgeWithFallback, chooseExecutorClient })
+          : new FiveMNpcTransportServer({
+            wireBridge: wireBridgeWithFallback,
+            chooseExecutorClient,
+            chooseExecutorCandidates,
+          })
 
       const engine = new NpcEngine(registry, hooks, events, transport)
       const scheduler = new NpcScheduler({

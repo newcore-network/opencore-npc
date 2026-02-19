@@ -31,24 +31,33 @@ export class ExecutorRegistryServer {
   }
 
   chooseAnyReadyOrFirstPlayer(): number | undefined {
-    if (this.readyExecutors.size > 0) {
-      const fromReady = this.readyExecutors.values().next().value
-      if (typeof fromReady === 'number' && Number.isFinite(fromReady)) {
-        return fromReady
-      }
+    const candidates = this.chooseCandidates()
+    return candidates[0]
+  }
+
+  chooseCandidates(): number[] {
+    const result: number[] = []
+    const seen = new Set<number>()
+
+    for (const ready of this.readyExecutors.values()) {
+      if (!Number.isFinite(ready) || ready <= 0 || seen.has(ready)) continue
+      seen.add(ready)
+      result.push(ready)
     }
 
     const fn = (globalThis as Record<string, unknown>).GetPlayers
-    if (typeof fn !== 'function') {
-      return undefined
+    if (typeof fn === 'function') {
+      const players = (fn as () => string[])()
+      if (Array.isArray(players)) {
+        for (const raw of players) {
+          const id = Number(raw)
+          if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue
+          seen.add(id)
+          result.push(id)
+        }
+      }
     }
 
-    const players = (fn as () => string[])()
-    if (!Array.isArray(players) || players.length === 0) {
-      return undefined
-    }
-
-    const id = Number(players[0])
-    return Number.isFinite(id) ? id : undefined
+    return result
   }
 }

@@ -27,8 +27,8 @@ export class FiveMNpcExecutorClient {
           speed: number
         }
         let targetEntity = entity
-        if ((!targetEntity || !DoesEntityExist(targetEntity)) && typeof NetworkGetEntityFromNetworkId === 'function') {
-          targetEntity = NetworkGetEntityFromNetworkId(entity)
+        if (!targetEntity || !DoesEntityExist(targetEntity)) {
+          targetEntity = resolveNetworkEntity(entity)
         }
         if (!targetEntity || !DoesEntityExist(targetEntity)) {
           throw new Error('goToEntity target not available on executor client')
@@ -57,7 +57,7 @@ export class FiveMNpcExecutorClient {
           seat: number
           timeoutMs?: number
         }
-        const vehicle = NetworkGetEntityFromNetworkId(vehicleNetId)
+        const vehicle = resolveNetworkEntity(vehicleNetId)
         if (!vehicle || !DoesEntityExist(vehicle)) {
           throw new Error(`Vehicle netId '${vehicleNetId}' is not streamed on executor client`)
         }
@@ -113,4 +113,21 @@ export class FiveMNpcExecutorClient {
 
     return { executed: true }
   }
+}
+
+function resolveNetworkEntity(netId: number): number {
+  const g = globalThis as Record<string, unknown>
+  const hasNetEntity = typeof g.NetworkDoesEntityExistWithNetworkId === 'function'
+    ? (g.NetworkDoesEntityExistWithNetworkId as (id: number) => boolean)
+    : undefined
+
+  if (hasNetEntity && !hasNetEntity(netId)) {
+    return 0
+  }
+
+  if (typeof g.NetworkGetEntityFromNetworkId !== 'function') {
+    return 0
+  }
+
+  return (g.NetworkGetEntityFromNetworkId as (id: number) => number)(netId)
 }
