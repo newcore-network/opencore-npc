@@ -37,11 +37,7 @@ export class GoToCarDriveParkSkill implements NpcSkill<z.infer<typeof ArgsSchema
     if (step === 0) {
       ctx.state.set('goToCarDrivePark.step', 1)
       ctx.events.emit('npc:state', { state: 'going_to_vehicle', vehicle: args.vehicleNetId }, { scope: 'nearby', radius: 120 })
-      const vehEntity =
-        typeof (globalThis as Record<string, unknown>).NetworkGetEntityFromNetworkId === 'function'
-          ? NetworkGetEntityFromNetworkId(args.vehicleNetId)
-          : args.vehicleNetId
-      await ctx.transport.goToEntity(ctx.npc, { entity: vehEntity, stopDistance: 2.2, speed: 1.8 })
+      await ctx.transport.goToEntity(ctx.npc, { entity: args.vehicleNetId, stopDistance: 2.2, speed: 1.8 })
       return { ok: true as const, wait: { type: 'until' as const, key: 'nearVehicle', timeoutMs: 8000 }, next: { type: 'continue' as const } }
     }
 

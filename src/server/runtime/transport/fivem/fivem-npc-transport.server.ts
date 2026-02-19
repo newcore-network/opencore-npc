@@ -19,6 +19,8 @@ export interface NpcWireBridgePort {
  */
 export class FiveMNpcTransportServer implements NpcTransport {
   private readonly delegatedDrivePlanByNpc = new Map<string, { x: number; y: number; z: number; satisfyAt: number }>()
+  private readonly delegatedNearVehicleByNpc = new Map<string, { satisfyAt: number }>()
+  private readonly delegatedInVehicleByNpc = new Map<string, { satisfyAt: number }>()
 
   constructor(
     private readonly options?: {
@@ -41,8 +43,14 @@ export class FiveMNpcTransportServer implements NpcTransport {
     npc: NpcIdentity,
     req: { entity: number; stopDistance: number; speed: number },
   ): Promise<void> {
+    const delegated = await this.tryDelegate(npc, 'goToEntity', req)
+    if (delegated.ok) {
+      this.planOptimisticNearVehicle(npc, req.speed)
+      return
+    }
+
     const ped = this.requirePed(npc)
-    const entity = req.entity
+    const entity = this.resolveEntityOrNetId(req.entity)
     if (!this.doesEntityExist(entity)) {
       throw new Error(`Target entity '${entity}' does not exist`)
     }
@@ -67,6 +75,12 @@ export class FiveMNpcTransportServer implements NpcTransport {
     npc: NpcIdentity,
     req: { vehicleNetId: number; seat: number; timeoutMs?: number },
   ): Promise<void> {
+    const delegated = await this.tryDelegate(npc, 'enterVehicle', req)
+    if (delegated.ok) {
+      this.planOptimisticInVehicle(npc)
+      return
+    }
+
     const ped = this.requirePed(npc)
     const vehicle = this.getEntityFromNetworkId(req.vehicleNetId)
     if (!vehicle || !this.doesEntityExist(vehicle)) {
@@ -78,6 +92,12 @@ export class FiveMNpcTransportServer implements NpcTransport {
   }
 
   async leaveVehicle(npc: NpcIdentity, _req: { timeoutMs?: number }): Promise<void> {
+    const delegated = await this.tryDelegate(npc, 'leaveVehicle', _req)
+    if (delegated.ok) {
+      this.delegatedInVehicleByNpc.delete(npc.id)
+      return
+    }
+
     const ped = this.requirePed(npc)
     const vehicle = GetVehiclePedIsIn(ped, false)
     if (!vehicle || vehicle === 0) return
@@ -126,7 +146,16 @@ export class FiveMNpcTransportServer implements NpcTransport {
     if (!ped || !this.doesEntityExist(ped)) return false
 
     if (key === 'inVehicle') {
-      return IsPedInAnyVehicle(ped)
+      if (IsPedInAnyVehicle(ped)) {
+        return true
+      }
+
+      const optimistic = this.delegatedInVehicleByNpc.get(npc.id)
+      if (!optimistic) {
+        return false
+      }
+
+      return Date.now() >= optimistic.satisfyAt
     }
 
     if (key === 'notInVehicle') {
@@ -137,7 +166,14 @@ export class FiveMNpcTransportServer implements NpcTransport {
       const targetVehNetId = state?.get<number>('targetVeh')
       if (!targetVehNetId) return false
       const vehicle = this.getEntityFromNetworkId(targetVehNetId)
-      if (!vehicle || !this.doesEntityExist(vehicle)) return false
+      if (!vehicle || !this.doesEntityExist(vehicle)) {
+        const optimistic = this.delegatedNearVehicleByNpc.get(npc.id)
+        if (!optimistic) {
+          return false
+        }
+
+        return Date.now() >= optimistic.satisfyAt
+      }
 
       const a = this.getCoords(ped)
       const b = this.getCoords(vehicle)
@@ -200,6 +236,19 @@ export class FiveMNpcTransportServer implements NpcTransport {
       return NetworkGetEntityFromNetworkId(netId)
     }
     return netId
+  }
+
+  private resolveEntityOrNetId(value: number): number {
+    if (this.doesEntityExist(value)) {
+      return value
+    }
+
+    const byNetId = this.getEntityFromNetworkId(value)
+    if (byNetId && this.doesEntityExist(byNetId)) {
+      return byNetId
+    }
+
+    return value
   }
 
   private async tryDelegate(
@@ -279,6 +328,20 @@ export class FiveMNpcTransportServer implements NpcTransport {
       y: req.y,
       z: req.z,
       satisfyAt: Date.now() + travelMs + settleMs,
+    })
+  }
+
+  private planOptimisticNearVehicle(npc: NpcIdentity, speed: number): void {
+    const walkSpeed = Math.max(0.8, speed)
+    const travelMs = Math.min(15_000, Math.max(1_200, (8 / walkSpeed) * 1000))
+    this.delegatedNearVehicleByNpc.set(npc.id, {
+      satisfyAt: Date.now() + travelMs,
+    })
+  }
+
+  private planOptimisticInVehicle(npc: NpcIdentity): void {
+    this.delegatedInVehicleByNpc.set(npc.id, {
+      satisfyAt: Date.now() + 1_800,
     })
   }
 }

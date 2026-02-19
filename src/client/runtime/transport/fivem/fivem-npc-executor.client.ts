@@ -26,10 +26,14 @@ export class FiveMNpcExecutorClient {
           stopDistance: number
           speed: number
         }
-        if (!entity || !DoesEntityExist(entity)) {
+        let targetEntity = entity
+        if ((!targetEntity || !DoesEntityExist(targetEntity)) && typeof NetworkGetEntityFromNetworkId === 'function') {
+          targetEntity = NetworkGetEntityFromNetworkId(entity)
+        }
+        if (!targetEntity || !DoesEntityExist(targetEntity)) {
           throw new Error('goToEntity target not available on executor client')
         }
-        const coords = GetEntityCoords(entity, true)
+        const coords = GetEntityCoords(targetEntity, true)
         TaskGoStraightToCoord(
           ped,
           Number(coords[0] ?? 0),
