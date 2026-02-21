@@ -1,12 +1,6 @@
 import { GLOBAL_CONTAINER } from '@open-core/framework'
 import { NPC_METADATA_KEYS } from '../../decorators/metadata-keys'
 import { getNpcControllerRegistry } from '../../decorators/npc.decorator'
-import type {
-  ConstraintApi,
-  NpcAgentConfigurator,
-  NpcControllerContract,
-  SkillAllowApi,
-} from '../../contracts/npc-controller.types'
 import { skillKeyOf, type NpcSkillLike } from '../../contracts/npc-skill-ref.types'
 import type { NpcHookName } from '../../decorators/npc-hook.decorator'
 import type { NpcPlanner } from '../planner/npc-planner.interface'
@@ -14,68 +8,27 @@ import type { NpcConstraints } from '../constraints/npc-constraints'
 import { NpcHookBusServer } from '../events/npc-hook-bus.server'
 import { NpcEventBusServer } from '../events/npc-event-bus.server'
 
+export type ControllerPlannerInput = 'rule' | 'ai' | NpcPlanner | undefined
+
 export type NpcControllerDefinition = {
-  group: string
+  id: string
   tickMs?: number
-  planner?: NpcPlanner
+  planner: NpcPlanner
   allowSkills: string[]
-  configureConstraints?: (constraints: NpcConstraints) => NpcConstraints
+  configureConstraints: (constraints: NpcConstraints) => NpcConstraints
 }
 
-class NpcControllerConfigBuilder implements NpcAgentConfigurator {
-  readonly definition: NpcControllerDefinition
-
-  constructor(group: string, tickMs?: number) {
-    this.definition = {
-      group,
-      tickMs,
-      allowSkills: [],
-    }
-  }
-
-  planWith(primary: NpcPlanner, fallback?: NpcPlanner) {
-    return this.usePlanner(primary, fallback)
-  }
-
-  usePlanner(primary: NpcPlanner, _fallback?: NpcPlanner) {
-    this.definition.planner = primary
-    return this
-  }
-
-  allowSkills(...skills: NpcSkillLike[]) {
-    this.definition.allowSkills.push(...skills.map((skill) => skillKeyOf(skill)))
-    return this
-  }
-
-  skills(configure: (api: SkillAllowApi) => unknown) {
-    const api: SkillAllowApi = {
-      allow: (...skills: NpcSkillLike[]) => {
-        this.definition.allowSkills.push(...skills.map((skill) => skillKeyOf(skill)))
-        return api
-      },
-    }
-    configure(api)
-    return this
-  }
-
-  withConstraints(configure: (constraints: ConstraintApi) => unknown) {
-    return this.constraints(configure)
-  }
-
-  constraints(configure: (constraints: ConstraintApi) => unknown) {
-    this.definition.configureConstraints = (constraints: NpcConstraints) => {
-      configure(constraints)
-      return constraints
-    }
-    return this
-  }
-
-  context(_configure: (_api: unknown) => unknown) {
-    return this
+type NpcControllerMetadata = {
+  id: string
+  tickMs?: number
+  planner?: ControllerPlannerInput
+  skills: string[]
+  constraints?: {
+    limitCallsPerTurn?: number
   }
 }
 
-type NpcControllerInstance = NpcControllerContract & {
+type NpcControllerInstance = {
   [key: string]: unknown
 }
 
@@ -86,6 +39,7 @@ export class NpcControllerRuntime {
   constructor(
     private readonly hooks: NpcHookBusServer,
     private readonly events: NpcEventBusServer,
+    private readonly resolvePlanner: (planner: ControllerPlannerInput) => NpcPlanner,
   ) {}
 
   initialize(): void {
@@ -94,24 +48,33 @@ export class NpcControllerRuntime {
 
     for (const ControllerClass of getNpcControllerRegistry()) {
       const meta = Reflect.getMetadata(NPC_METADATA_KEYS.CONTROLLER, ControllerClass) as
-        | { group: string; tickMs?: number }
+        | NpcControllerMetadata
         | undefined
-      if (!meta?.group) continue
+      if (!meta?.id) continue
 
       const instance = GLOBAL_CONTAINER.resolve(ControllerClass as never) as NpcControllerInstance
-      this.bindDecoratedMethods(instance)
+      this.bindDecoratedMethods(instance, meta.id)
 
-      const builder = new NpcControllerConfigBuilder(meta.group, meta.tickMs)
-      if (typeof instance.configure !== 'function') {
-        throw new Error(
-          `@Server.NPC controller '${ControllerClass.name}' must implement configure(agent)`,
-        )
+      const planner = this.resolvePlanner(meta.planner)
+      const allowSkills = meta.skills.map((skill) => this.resolveSkillKey(skill))
+
+      if (allowSkills.length === 0) {
+        throw new Error(`NpcController '${ControllerClass.name}' must declare at least one skill`)
       }
 
-      instance.configure(builder)
-      this.assertControllerRules(ControllerClass.name, builder.definition)
-
-      this.byGroup.set(meta.group, builder.definition)
+      this.byGroup.set(meta.id, {
+        id: meta.id,
+        tickMs: meta.tickMs,
+        planner,
+        allowSkills,
+        configureConstraints: (constraints: NpcConstraints) => {
+          constraints.allow(...allowSkills.map((skill) => ({ key: skill } as NpcSkillLike)))
+          if (typeof meta.constraints?.limitCallsPerTurn === 'number') {
+            constraints.limitCallsPerTurn(meta.constraints.limitCallsPerTurn)
+          }
+          return constraints
+        },
+      })
     }
   }
 
@@ -119,7 +82,14 @@ export class NpcControllerRuntime {
     return this.byGroup.get(group)
   }
 
-  private bindDecoratedMethods(instance: NpcControllerInstance): void {
+  private resolveSkillKey(skill: string | NpcSkillLike): string {
+    if (typeof skill === 'string') {
+      return skill
+    }
+    return skillKeyOf(skill)
+  }
+
+  private bindDecoratedMethods(instance: NpcControllerInstance, controllerId: string): void {
     const prototype = Object.getPrototypeOf(instance)
     const methods = Object.getOwnPropertyNames(prototype).filter(
       (m) => m !== 'constructor' && typeof instance[m] === 'function',
@@ -132,6 +102,9 @@ export class NpcControllerRuntime {
       if (hookMeta?.hook) {
         const method = (instance[methodName] as (...args: unknown[]) => unknown).bind(instance)
         this.hooks.on(hookMeta.hook, (ctx, info) => {
+          if (!ctx || typeof ctx !== 'object') return
+          const scope = (ctx as { controllerId?: unknown }).controllerId
+          if (scope !== controllerId) return
           void method(ctx, info)
         })
       }
@@ -141,30 +114,11 @@ export class NpcControllerRuntime {
         | undefined
       if (eventMeta?.eventName) {
         const method = (instance[methodName] as (...args: unknown[]) => unknown).bind(instance)
-        this.events.on(eventMeta.eventName, (event) => {
-          void method(event)
+        this.events.on(eventMeta.eventName, (event, ctx) => {
+          if (!event || event.controllerId !== controllerId || !ctx) return
+          void method(ctx, event)
         })
       }
-    }
-  }
-
-  private assertControllerRules(controllerName: string, definition: NpcControllerDefinition): void {
-    if (!definition.planner) {
-      throw new Error(
-        `NPC controller '${controllerName}' must configure a planner via agent.usePlanner(...)`,
-      )
-    }
-
-    if (definition.allowSkills.length === 0) {
-      throw new Error(
-        `NPC controller '${controllerName}' must define an explicit allowlist via agent.skills(...).allow(...)`,
-      )
-    }
-
-    if (!definition.configureConstraints) {
-      throw new Error(
-        `NPC controller '${controllerName}' must define constraints via agent.constraints(...)`,
-      )
     }
   }
 }

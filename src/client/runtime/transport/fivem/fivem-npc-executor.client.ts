@@ -62,6 +62,10 @@ export class FiveMNpcExecutorClient {
           throw new Error(`Vehicle netId '${vehicleNetId}' is not streamed on executor client`)
         }
         TaskEnterVehicle(ped, vehicle, timeoutMs ?? 8000, seat, 2.0, 1, 0)
+        const entered = await waitUntilInVehicle(ped, vehicle, timeoutMs ?? 8000)
+        if (!entered) {
+          throw new Error('NPC could not enter vehicle in time')
+        }
         break
       }
       case 'leaveVehicle': {
@@ -130,4 +134,20 @@ function resolveNetworkEntity(netId: number): number {
   }
 
   return (g.NetworkGetEntityFromNetworkId as (id: number) => number)(netId)
+}
+
+async function waitUntilInVehicle(ped: number, vehicle: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + Math.max(1500, timeoutMs)
+  while (Date.now() < deadline) {
+    const current = GetVehiclePedIsIn(ped, false)
+    if (current && current === vehicle) {
+      return true
+    }
+    await delay(120)
+  }
+  return false
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }

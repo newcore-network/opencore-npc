@@ -1,36 +1,29 @@
-import { buildNpcPlannerPrompt } from './ai-prompts'
+import { buildNpcPlannerPrompt } from '../ai/ai-prompts'
+import type { LLMProvider, LlmPlanInput } from '../llm-provider'
 
-export type OpenRouterProviderOptions = {
+export type OpenRouterAdapterOptions = {
   apiKey: string
   defaultModel: string
   timeoutMs?: number
   retries?: number
   endpoint?: string
   debug?: boolean
+  maxResponseChars?: number
 }
 
-/** Provider contract used by the AI planner. */
-export interface AiProvider {
-  complete(input: { model?: string; context: unknown; allowSkills: string[] }): Promise<unknown>
-}
+export class OpenRouterAdapter implements LLMProvider {
+  readonly name = 'openrouter'
 
-/**
- * OpenRouter-backed provider implementation.
- *
- * @remarks
- * Returns parsed JSON only.
- */
-export class OpenRouterProvider implements AiProvider {
-  constructor(private readonly options: OpenRouterProviderOptions) {}
+  constructor(private readonly options: OpenRouterAdapterOptions) {}
 
-  /** Sends a bounded request to OpenRouter and parses JSON output. */
-  async complete(input: { model?: string; context: unknown; allowSkills: string[] }): Promise<unknown> {
+  async complete(input: LlmPlanInput): Promise<unknown> {
     const endpoint = this.options.endpoint ?? 'https://openrouter.ai/api/v1/chat/completions'
     const timeoutMs = this.options.timeoutMs ?? 3500
     const retries = this.options.retries ?? 0
+    const maxResponseChars = this.options.maxResponseChars ?? 200_000
 
     const payload = {
-      model: input.model ?? this.options.defaultModel,
+      model: this.options.defaultModel,
       temperature: 0.2,
       messages: [
         { role: 'system', content: buildNpcPlannerPrompt() },
@@ -38,7 +31,12 @@ export class OpenRouterProvider implements AiProvider {
           role: 'user',
           content: JSON.stringify({
             allowSkills: input.allowSkills,
-            context: input.context,
+            context: {
+              goal: input.goal,
+              snapshot: input.snapshot,
+              memory: input.memory,
+              observations: input.observations,
+            },
           }),
         },
       ],
@@ -49,9 +47,7 @@ export class OpenRouterProvider implements AiProvider {
       this.debug('[SEND]', {
         endpoint,
         model: payload.model,
-        temperature: payload.temperature,
         allowSkills: input.allowSkills,
-        context: input.context,
       })
     }
 
@@ -71,31 +67,18 @@ export class OpenRouterProvider implements AiProvider {
         })
 
         if (!response.ok) {
-          if (this.isDebugEnabled()) {
-            this.debug('[RECEIVED][ERROR]', { status: response.status })
-          }
           throw new Error(`OpenRouter returned ${response.status}`)
         }
 
         const body = await response.json()
         const content = body?.choices?.[0]?.message?.content
-        if (this.isDebugEnabled()) {
-          this.debug('[RECEIVED][RAW]', {
-            id: body?.id,
-            model: body?.model,
-            finish_reason: body?.choices?.[0]?.finish_reason,
-            content: typeof content === 'string' ? truncate(content, 2000) : content,
-          })
-        }
         if (typeof content !== 'string') {
           throw new Error('OpenRouter response missing message content')
         }
-
-        const parsed = JSON.parse(content)
-        if (this.isDebugEnabled()) {
-          this.debug('[RECEIVED][PARSED]', parsed)
+        if (content.length > maxResponseChars) {
+          throw new Error(`OpenRouter response too large (${content.length} chars)`) 
         }
-        return parsed
+        return JSON.parse(content)
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error))
         if (this.isDebugEnabled()) {
@@ -121,9 +104,4 @@ export class OpenRouterProvider implements AiProvider {
       console.log(`[npc:ai:openrouter] ${stage}`)
     }
   }
-}
-
-function truncate(value: string, max: number): string {
-  if (value.length <= max) return value
-  return `${value.slice(0, max)}...`
 }

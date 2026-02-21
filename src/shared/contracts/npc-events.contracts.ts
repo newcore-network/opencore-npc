@@ -9,6 +9,7 @@ export type NpcEventScope = 'server' | 'nearby' | 'owner' | 'all'
 export type NpcEventEnvelope<T = any> = {
   name: string
   npcId: string
+  controllerId?: string
   payload: T
   scope: NpcEventScope
   radius?: number

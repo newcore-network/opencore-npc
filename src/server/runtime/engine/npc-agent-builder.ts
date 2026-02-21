@@ -11,6 +11,7 @@ export class NpcAgentBuilder {
   /** Creates a builder for one NPC agent. */
   constructor(
     private readonly npc: NpcIdentity,
+    private readonly controllerId: string,
     private readonly goal: NpcGoal,
     private readonly planner: NpcPlanner,
   ) {}
@@ -37,6 +38,7 @@ export class NpcAgentBuilder {
   build(): NpcAgent {
     return {
       npc: this.npc,
+      controllerId: this.controllerId,
       goal: this.goal,
       planner: this.planner,
       constraints: this.constraints,

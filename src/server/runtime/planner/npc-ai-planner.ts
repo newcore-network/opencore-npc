@@ -1,7 +1,7 @@
 import type { NpcContext } from '../context/npc-context.types'
 import type { NpcPlanner, PlannerSpec, PlanDecision } from './npc-planner.interface'
 import { AiDecisionSchema } from './ai/ai-json-schema'
-import type { AiProvider } from './ai/openrouter-provider'
+import type { LLMProvider } from './llm-provider'
 
 type BudgetConfig = {
   maxRequestsPerMin?: number
@@ -19,9 +19,10 @@ export class NpcAiPlanner implements NpcPlanner {
   private readonly disabledByNpc = new Set<string>()
 
   constructor(
-    private readonly provider: AiProvider,
+    private readonly provider: LLMProvider,
     private readonly fallback: NpcPlanner,
     private readonly budget?: BudgetConfig,
+    private readonly logger: Pick<Console, 'error'> = console,
   ) {}
 
   /** Attempts AI decision first, then falls back to deterministic planner. */
@@ -60,12 +61,10 @@ export class NpcAiPlanner implements NpcPlanner {
 
     try {
       const raw = await this.provider.complete({
-        context: {
-          goal: ctx.goal,
-          snapshot: ctx.snapshot,
-          memory: ctx.memory,
-          observations: ctx.observations,
-        },
+        goal: ctx.goal,
+        snapshot: ctx.snapshot,
+        memory: ctx.memory,
+        observations: ctx.observations,
         allowSkills: spec.allowSkills,
       })
 
@@ -98,7 +97,9 @@ export class NpcAiPlanner implements NpcPlanner {
         args: parsed.data.args,
         confidence: parsed.data.confidence,
       }
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.logger.error(`[npc:ai:planner] provider '${this.provider.name}' failed: ${message}`)
       this.debug(ctx.npc.id, 'provider_exception_fallback', {})
       if (this.budget?.disableAfterFirstFailure) {
         this.disabledByNpc.add(ctx.npc.id)
@@ -152,6 +153,6 @@ export function rulePlanner(): NpcPlanner {
 }
 
 /** Creates an AI planner with explicit provider and fallback. */
-export function aiPlanner(provider: AiProvider, fallback: NpcPlanner, budget?: BudgetConfig): NpcPlanner {
+export function aiPlanner(provider: LLMProvider, fallback: NpcPlanner, budget?: BudgetConfig): NpcPlanner {
   return new NpcAiPlanner(provider, fallback, budget)
 }

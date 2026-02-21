@@ -14,6 +14,7 @@ export type ActiveSkillState = {
 /** Mutable state object representing one NPC runtime agent. */
 export type NpcAgent = {
   npc: NpcIdentity
+  controllerId: string
   goal: NpcGoal
   planner: NpcPlanner
   constraints: NpcConstraints

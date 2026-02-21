@@ -1,7 +1,8 @@
 import { EventsAPI, GLOBAL_CONTAINER } from '@open-core/framework'
 import type { NpcEventEnvelope, NpcEventScope } from '../../../shared/contracts/npc-events.contracts'
+import type { NpcContext } from '../context/npc-context.types'
 
-type Handler<T = any> = (event: NpcEventEnvelope<T>) => void | Promise<void>
+type Handler<T = any> = (event: NpcEventEnvelope<T>, ctx?: NpcContext) => void | Promise<void>
 
 type AudienceResolver = (evt: NpcEventEnvelope) => number[]
 
@@ -37,11 +38,13 @@ export class NpcEventBusServer {
     name: string,
     npcId: string,
     payload: T,
-    opts?: { scope?: NpcEventScope; radius?: number },
+    opts?: { scope?: NpcEventScope; radius?: number; controllerId?: string },
+    ctx?: NpcContext,
   ): NpcEventEnvelope<T> {
     const envelope: NpcEventEnvelope<T> = {
       name,
       npcId,
+      controllerId: opts?.controllerId,
       payload,
       scope: opts?.scope ?? 'server',
       radius: opts?.radius,
@@ -51,7 +54,7 @@ export class NpcEventBusServer {
     const set = this.handlers.get(name)
     if (set) {
       for (const handler of [...set]) {
-        Promise.resolve(handler(envelope)).catch(() => undefined)
+        Promise.resolve(handler(envelope, ctx)).catch(() => undefined)
       }
     }
 
@@ -59,8 +62,9 @@ export class NpcEventBusServer {
     if (eventsApi && envelope.scope !== 'server') {
       const audience = this.resolveAudience?.(envelope) ?? []
       if (audience.length > 0) {
-        eventsApi.emit('opencore:npc:event', audience, envelope)
-        eventsApi.emit(`opencore:npc:event:${name}`, audience, envelope)
+        const networkEnvelope = { ...envelope }
+        eventsApi.emit('opencore:npc:event', audience, networkEnvelope)
+        eventsApi.emit(`opencore:npc:event:${name}`, audience, networkEnvelope)
       }
     }
 

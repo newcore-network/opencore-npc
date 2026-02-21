@@ -9,7 +9,9 @@ import type { NpcTransport } from '../transport/npc-transport.interface'
  */
 export type NpcContext = {
   npc: NpcIdentity
+  controllerId: string
   goal: NpcGoal
+  setGoal(goal: string | NpcGoal): void
   snapshot: unknown
   memory: unknown[]
   observations: Record<string, unknown>

@@ -12,7 +12,14 @@ export type SkillWait =
 /** Canonical execution result returned by skills. */
 export type SkillResult =
   | { ok: true; data?: unknown; next?: SkillNext; wait?: SkillWait }
-  | { ok: false; error: string; retryInMs?: number; next?: SkillNext; wait?: SkillWait }
+  | {
+    ok: false
+    error: string
+    retryInMs?: number
+    cooldownPenaltyMs?: number
+    next?: SkillNext
+    wait?: SkillWait
+  }
 
 /**
  * Helper base class for building structured skill results.
