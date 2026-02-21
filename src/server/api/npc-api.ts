@@ -36,7 +36,7 @@ export class NpcApi {
   attach(
     npc: NpcIdentity,
     options: {
-      group?: string
+      controllerId?: string
       planner?: NpcPlanner
       goal?: NpcGoal
       tickMs?: number
@@ -48,18 +48,18 @@ export class NpcApi {
     }
 
     this.controllers.initialize()
-    const group = options.group
-    const controllerDef = group ? this.controllers.getByGroup(group) : undefined
+    const controllerId = options.controllerId
+    const controllerDef = controllerId ? this.controllers.getById(controllerId) : undefined
 
     const planner = options.planner ?? controllerDef?.planner ?? new NpcRulePlanner()
-    const controllerId = group ?? controllerDef?.id ?? 'default'
-    const goal = options.goal ?? { id: controllerId }
+    const resolvedControllerId = controllerId ?? controllerDef?.id ?? 'default'
+    const goal = options.goal ?? { id: resolvedControllerId }
     const configureConstraints =
       options.configureConstraints ??
       controllerDef?.configureConstraints ??
       ((constraints: NpcConstraints) => constraints)
 
-    const agent = new NpcAgentBuilder(npc, controllerId, goal, planner).withConstraints(configureConstraints).build()
+    const agent = new NpcAgentBuilder(npc, resolvedControllerId, goal, planner).withConstraints(configureConstraints).build()
 
     if (controllerDef?.allowSkills?.length) {
       agent.constraints.allow(...controllerDef.allowSkills.map((skill) => skillRef(skill)))

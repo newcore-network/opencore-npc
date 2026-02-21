@@ -1,21 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { NPC } from '../src/server/decorators/npc.decorator'
+import { NpcController } from '../src/server/decorators/npc.decorator'
 import { NpcSkill } from '../src/server/decorators/npc-skill.decorator'
 import { OnNpcHook } from '../src/server/decorators/npc-hook.decorator'
 import { OnNpcEvent } from '../src/server/decorators/on-npc-event.decorator'
 import { NPC_METADATA_KEYS } from '../src/server/decorators/metadata-keys'
 
 describe('npc decorators', () => {
-  it('@Server.NPC writes controller metadata', () => {
-    @NPC({ group: 'drivers', tickMs: 500 })
+  it('@NpcController writes controller metadata', () => {
+    @NpcController({ id: 'drivers', tickMs: 500, skills: ['moveTo'] })
     class DriverController {}
 
     const meta = Reflect.getMetadata(NPC_METADATA_KEYS.CONTROLLER, DriverController)
-    expect(meta).toEqual({ group: 'drivers', tickMs: 500 })
+    expect(meta).toEqual({ id: 'drivers', tickMs: 500, skills: ['moveTo'] })
   })
 
-  it('@Server.NpcSkill writes skill metadata', () => {
-    @NpcSkill({ key: 'driveTo', tags: ['vehicle'], mutex: 'movement' })
+  it('@NpcSkill writes skill metadata', () => {
+    @NpcSkill('driveTo', { tags: ['vehicle'], mutex: 'movement' })
     class DriveToSkill {}
 
     const meta = Reflect.getMetadata(NPC_METADATA_KEYS.SKILL, DriveToSkill)

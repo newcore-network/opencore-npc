@@ -13,7 +13,7 @@ describe('NpcSkillRegistry', () => {
   })
 
   it('registers third-party skill from class decorator', () => {
-    @NpcSkill({ key: 'thirdPartySkill', tags: ['utility'] })
+    @NpcSkill('thirdPartySkill', { tags: ['utility'] })
     class ThirdPartySkill {
       readonly key = 'thirdPartySkill'
       async execute() {

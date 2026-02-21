@@ -12,7 +12,7 @@ const baseCtx: any = {
 
 describe('NpcAiPlanner', () => {
   it('accepts valid output', async () => {
-    const provider = { complete: vi.fn(async () => ({ skill: 'moveTo', args: { x: 1, y: 2, z: 3 } })) }
+    const provider = { name: 'mock', complete: vi.fn(async () => ({ skill: 'moveTo', args: { x: 1, y: 2, z: 3 } })) }
     const planner = new NpcAiPlanner(provider, new NpcRulePlanner())
     const decision = await planner.decide(baseCtx, { allowSkills: ['moveTo'] })
 
@@ -21,23 +21,47 @@ describe('NpcAiPlanner', () => {
   })
 
   it('falls back on invalid schema or disallowed skill', async () => {
-    const providerInvalid = { complete: vi.fn(async () => ({ bad: true })) }
+    const providerInvalid = { name: 'mock', complete: vi.fn(async () => ({ bad: true })) }
     const plannerInvalid = new NpcAiPlanner(providerInvalid, new NpcRulePlanner())
     const d1 = await plannerInvalid.decide(baseCtx, { allowSkills: ['moveTo'] })
     expect(d1.type).toBe('idle')
 
-    const providerDisallowed = { complete: vi.fn(async () => ({ skill: 'driveTo', args: {} })) }
+    const providerDisallowed = { name: 'mock', complete: vi.fn(async () => ({ skill: 'driveTo', args: {} })) }
     const plannerDisallowed = new NpcAiPlanner(providerDisallowed, new NpcRulePlanner())
     const d2 = await plannerDisallowed.decide(baseCtx, { allowSkills: ['moveTo'] })
     expect(d2.type).toBe('idle')
   })
 
   it('enforces requests-per-minute budget', async () => {
-    const provider = { complete: vi.fn(async () => ({ skill: 'moveTo', args: {} })) }
+    const provider = { name: 'mock', complete: vi.fn(async () => ({ skill: 'moveTo', args: {} })) }
     const planner = new NpcAiPlanner(provider, new NpcRulePlanner(), { maxRequestsPerMin: 1 })
 
     await planner.decide(baseCtx, { allowSkills: ['moveTo'] })
     await planner.decide(baseCtx, { allowSkills: ['moveTo'] })
     expect(provider.complete).toHaveBeenCalledTimes(1)
+  })
+
+  it('logs provider errors and falls back', async () => {
+    const provider = { name: 'mock', complete: vi.fn(async () => { throw new Error('upstream 500') }) }
+    const logger = { error: vi.fn() }
+    const planner = new NpcAiPlanner(provider, new NpcRulePlanner(), undefined, logger)
+
+    const decision = await planner.decide(baseCtx, { allowSkills: ['moveTo'] })
+    expect(decision.type).toBe('idle')
+    expect(logger.error).toHaveBeenCalledTimes(1)
+  })
+
+  it('enforces budget under concurrent load', async () => {
+    const provider = { name: 'mock', complete: vi.fn(async () => ({ skill: 'moveTo', args: {} })) }
+    const planner = new NpcAiPlanner(provider, new NpcRulePlanner(), {
+      maxRequestsPerMin: 5,
+      minDecisionIntervalMs: 0,
+    })
+
+    await Promise.all(
+      Array.from({ length: 100 }, () => planner.decide(baseCtx, { allowSkills: ['moveTo'] })),
+    )
+
+    expect(provider.complete.mock.calls.length).toBeLessThanOrEqual(5)
   })
 })

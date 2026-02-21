@@ -14,7 +14,7 @@ describe('npcPlugin', () => {
       config: { get: vi.fn() },
     })
 
-    expect(typeof (server as any).NPC).toBe('function')
+    expect(typeof (server as any).NpcController).toBe('function')
     expect(typeof (server as any).NpcSkill).toBe('function')
     expect(typeof (server as any).OnNpcHook).toBe('function')
     expect(typeof (server as any).OnNpcEvent).toBe('function')

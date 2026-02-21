@@ -11,6 +11,7 @@ import type { NpcPlanner } from '../src/server/runtime/planner/npc-planner.inter
 function createAgent(planner: NpcPlanner): NpcAgent {
   return {
     npc: { id: 'npc-1' },
+    controllerId: 'test',
     goal: { id: 'test' },
     planner,
     constraints: new NpcConstraints().allow(

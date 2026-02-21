@@ -1,7 +1,8 @@
 import type { OpenCorePlugin } from '@open-core/framework/server'
+import { GLOBAL_CONTAINER } from '@open-core/framework'
 import type { NpcIdentity } from '../shared/contracts/npc-types'
-import { NPC } from './decorators/npc.decorator'
-import { NpcSkill } from './decorators/npc-skill.decorator'
+import { NpcController } from './decorators/npc.decorator'
+import { NpcSkill, getNpcSkillRegistry as getDecoratedNpcSkillClasses } from './decorators/npc-skill.decorator'
 import { OnNpcHook } from './decorators/npc-hook.decorator'
 import { OnNpcEvent } from './decorators/on-npc-event.decorator'
 import { NpcSkillRegistry } from './runtime/engine/npc-skill-registry'
@@ -23,6 +24,11 @@ import { ExecutorRegistryServer } from './runtime/transport/fivem/wire/executor-
 import { NetWireFallbackServer } from './runtime/transport/fivem/wire/net-wire-fallback.server'
 import { RpcCallerResolverServer } from './runtime/transport/fivem/wire/rpc-caller-resolver.server'
 import { CompositeWireCallerServer } from './runtime/transport/fivem/wire/composite-wire-caller.server'
+import { NpcRulePlanner } from './runtime/planner/npc-rule-planner'
+import { NpcAiPlanner } from './runtime/planner/npc-ai-planner'
+import type { ControllerPlannerInput } from './runtime/controllers/npc-controller.runtime'
+import type { LLMProvider } from './runtime/planner/llm-provider'
+import type { NpcSkill as NpcSkillContract } from './runtime/contracts/npc-skill.interface'
 
 export type NpcPluginOptions = {
   /** Runtime adapter used for transport operations. */
@@ -35,6 +41,12 @@ export type NpcPluginOptions = {
     tickMsFar?: number
     nearRadius?: number
   }
+  llmProvider?: LLMProvider
+  aiBudget?: {
+    maxRequestsPerMin?: number
+    minDecisionIntervalMs?: number
+    disableAfterFirstFailure?: boolean
+  }
 }
 
 /**
@@ -46,12 +58,12 @@ export function npcPlugin(options?: NpcPluginOptions): OpenCorePlugin {
   return {
     name: 'npc',
     install(ctx) {
-      ctx.server.registerApiExtension('NPC', NPC)
+      ctx.server.registerApiExtension('NpcController', NpcController)
       ctx.server.registerApiExtension('NpcSkill', NpcSkill)
       ctx.server.registerApiExtension('OnNpcHook', OnNpcHook)
       ctx.server.registerApiExtension('OnNpcEvent', OnNpcEvent)
 
-      const registry = new NpcSkillRegistry()
+      const registry = new NpcSkillRegistry((ctor) => GLOBAL_CONTAINER.resolve(ctor as never))
       const hooks = new NpcHookBusServer()
       const events = new NpcEventBusServer()
 
@@ -80,11 +92,25 @@ export function npcPlugin(options?: NpcPluginOptions): OpenCorePlugin {
         nearRadius: options?.defaults?.nearRadius ?? 120,
       })
       const entities = new NpcEntityService()
-      const controllers = new NpcControllerRuntime(hooks, events)
+      const controllers = new NpcControllerRuntime(hooks, events, (planner: ControllerPlannerInput) => {
+        if (!planner || planner === 'rule') {
+          return new NpcRulePlanner()
+        }
+        if (planner === 'ai') {
+          if (!options?.llmProvider) {
+            throw new Error('NpcController planner "ai" requires npcPlugin({ llmProvider })')
+          }
+          return new NpcAiPlanner(options.llmProvider, new NpcRulePlanner(), options.aiBudget)
+        }
+        return planner
+      })
       const runtime = new NpcRuntimeService(scheduler, engine)
       const api = new NpcApi(engine, entities, runtime, controllers)
 
       registerBuiltInNpcSkills(registry)
+      for (const skillClass of getDecoratedNpcSkillClasses()) {
+        registry.registerClass(skillClass as new () => NpcSkillContract)
+      }
 
       runtime.start()
 
@@ -134,7 +160,7 @@ function resolveAdapterPreference(explicit?: 'fivem' | 'redm'): 'fivem' | 'redm'
 
 declare module '@open-core/framework/server' {
   interface ServerPluginApi {
-    NPC: typeof NPC
+    NpcController: typeof NpcController
     NpcSkill: typeof NpcSkill
     OnNpcHook: typeof OnNpcHook
     OnNpcEvent: typeof OnNpcEvent

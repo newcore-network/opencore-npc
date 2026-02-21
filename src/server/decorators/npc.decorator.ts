@@ -1,24 +1,14 @@
 import { injectable } from 'tsyringe'
 import { Server } from '@open-core/framework/server'
 import { NPC_METADATA_KEYS } from './metadata-keys'
-import type { NpcPlanner } from '../runtime/planner/npc-planner.interface'
-import { skillKeyOf, type NpcSkillLike } from '../contracts/npc-skill-ref.types'
+import { skillKeyOf } from '../contracts/npc-skill-ref.types'
+import type { NpcControllerOptions } from '../contracts/npc-controller.types'
 
 type ClassConstructor<T = unknown> = new (...args: never[]) => T
 
-export type NpcControllerOptions = {
-  id: string
-  planner?: 'rule' | 'ai' | NpcPlanner
-  skills: Array<NpcSkillLike | string>
-  constraints?: {
-    limitCallsPerTurn?: number
-  }
-  tickMs?: number
-}
-
 const registry = new Set<ClassConstructor>()
 
-/** Returns all classes registered with `@Server.NPC(...)`. */
+/** Returns all classes registered with `@NpcController(...)`. */
 export function getNpcControllerRegistry(): ClassConstructor[] {
   return [...registry]
 }

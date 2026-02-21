@@ -33,7 +33,7 @@ type NpcControllerInstance = {
 }
 
 export class NpcControllerRuntime {
-  private readonly byGroup = new Map<string, NpcControllerDefinition>()
+  private readonly byId = new Map<string, NpcControllerDefinition>()
   private initialized = false
 
   constructor(
@@ -62,7 +62,7 @@ export class NpcControllerRuntime {
         throw new Error(`NpcController '${ControllerClass.name}' must declare at least one skill`)
       }
 
-      this.byGroup.set(meta.id, {
+      this.byId.set(meta.id, {
         id: meta.id,
         tickMs: meta.tickMs,
         planner,
@@ -78,8 +78,8 @@ export class NpcControllerRuntime {
     }
   }
 
-  getByGroup(group: string): NpcControllerDefinition | undefined {
-    return this.byGroup.get(group)
+  getById(id: string): NpcControllerDefinition | undefined {
+    return this.byId.get(id)
   }
 
   private resolveSkillKey(skill: string | NpcSkillLike): string {

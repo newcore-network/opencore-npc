@@ -13,6 +13,8 @@ import type { NpcSkillRegistry } from './npc-skill-registry'
  */
 export class NpcEngine {
   private readonly contextBuilder = new NpcContextBuilder()
+  private readonly cooldownByNpc = new Map<string, Map<string, number>>()
+  private readonly cooldownReportByNpc = new Map<string, Map<string, number>>()
 
   constructor(
     private readonly skills: NpcSkillRegistry,
@@ -68,7 +70,7 @@ export class NpcEngine {
     )
     if (!report.allowed) {
       this.hooks.emit('decisionRejected', ctx, { decision, report })
-      this.events.emit('npc:error', agent.npc.id, { reason: report.reasons.join('; ') }, { scope: 'server' })
+      this.events.emit('npc:error', agent.npc.id, { reason: report.reasons.join('; ') }, { scope: 'server', controllerId: agent.controllerId }, ctx)
       return
     }
 
@@ -84,28 +86,26 @@ export class NpcEngine {
 
     const selectedSkill = this.skills.get(decision.skill)
     if (!selectedSkill) {
-      this.events.emit('npc:error', agent.npc.id, { error: `skill '${decision.skill}' not found` }, { scope: 'server' })
+      this.events.emit('npc:error', agent.npc.id, { error: `skill '${decision.skill}' not found` }, { scope: 'server', controllerId: agent.controllerId }, ctx)
       return
     }
 
-    const normalizedArgs = this.normalizeDecisionArgs(agent, decision.skill, decision.args)
-
     if (selectedSkill.validate) {
-      const parsed = tryValidate(selectedSkill.validate, normalizedArgs)
+      const parsed = tryValidate(selectedSkill.validate, decision.args)
       if (!parsed.ok) {
         const validationError = `invalidSkillArgs: ${parsed.error}`
         this.hooks.emit('decisionRejected', ctx, {
           decision,
           report: { allowed: false, reasons: [validationError] },
         })
-        this.events.emit('npc:error', agent.npc.id, { skill: decision.skill, error: validationError }, { scope: 'server' })
-        this.markSkillCooldown(agent, decision.skill, this.resolveCooldownMs(validationError))
+        this.events.emit('npc:error', agent.npc.id, { skill: decision.skill, error: validationError }, { scope: 'server', controllerId: agent.controllerId }, ctx)
+        this.markSkillCooldown(agent, decision.skill, 10_000)
         agent.state.set('ai:disable', true)
         return
       }
     }
 
-    await this.runSkill(agent, decision.skill, normalizedArgs)
+    await this.runSkill(agent, decision.skill, decision.args)
   }
 
   private isWaiting(agent: NpcAgent): boolean {
@@ -125,7 +125,7 @@ export class NpcEngine {
       if (Date.now() >= untilTs) {
         const ctx = this.buildCtx(agent)
         this.hooks.emit('skillError', ctx, { error: `wait '${active.wait.key}' timeout` })
-        this.events.emit('npc:error', agent.npc.id, { error: `wait '${active.wait.key}' timeout` }, { scope: 'server' })
+        this.events.emit('npc:error', agent.npc.id, { error: `wait '${active.wait.key}' timeout` }, { scope: 'server', controllerId: agent.controllerId }, ctx)
         agent.active = undefined
         return false
       }
@@ -141,7 +141,7 @@ export class NpcEngine {
   private async runSkill(agent: NpcAgent, skillKey: string, args: unknown): Promise<void> {
     const skill = this.skills.get(skillKey)
     if (!skill) {
-      this.events.emit('npc:error', agent.npc.id, { error: `skill '${skillKey}' not found` }, { scope: 'server' })
+      this.events.emit('npc:error', agent.npc.id, { error: `skill '${skillKey}' not found` }, { scope: 'server', controllerId: agent.controllerId }, this.buildCtx(agent))
       return
     }
 
@@ -157,8 +157,8 @@ export class NpcEngine {
 
       if (!result.ok && !result.wait && !result.retryInMs) {
         this.hooks.emit('skillError', ctx, { skill: skillKey, error: result.error })
-        this.events.emit('npc:error', agent.npc.id, { skill: skillKey, error: result.error }, { scope: 'server' })
-        this.markSkillCooldown(agent, skillKey, this.resolveCooldownMs(result.error))
+        this.events.emit('npc:error', agent.npc.id, { skill: skillKey, error: result.error }, { scope: 'server', controllerId: agent.controllerId }, ctx)
+        this.markSkillCooldown(agent, skillKey, result.cooldownPenaltyMs ?? 3_000)
         agent.constraints.releaseMutex(skillKey, agent.state)
         agent.active = undefined
         return
@@ -185,45 +185,43 @@ export class NpcEngine {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       this.hooks.emit('skillError', ctx, { skill: skillKey, error: message })
-      this.events.emit('npc:error', agent.npc.id, { skill: skillKey, error: message }, { scope: 'server' })
-      this.markSkillCooldown(agent, skillKey, this.resolveCooldownMs(message))
+      this.events.emit('npc:error', agent.npc.id, { skill: skillKey, error: message }, { scope: 'server', controllerId: agent.controllerId }, ctx)
+      this.markSkillCooldown(agent, skillKey, 3_000)
       agent.constraints.releaseMutex(skillKey, agent.state)
       agent.active = undefined
     }
   }
 
   private isSkillCoolingDown(agent: NpcAgent, skillKey: string): boolean {
-    const until = agent.state.get(`cooldown:${skillKey}`)
+    const until = this.cooldownByNpc.get(agent.npc.id)?.get(skillKey)
     if (typeof until !== 'number') return false
     return Date.now() < until
   }
 
   private markSkillCooldown(agent: NpcAgent, skillKey: string, ms: number): void {
-    agent.state.set(`cooldown:${skillKey}`, Date.now() + ms)
-    agent.state.delete(`cooldown:reported:${skillKey}`)
+    const now = Date.now()
+    const bySkill = this.cooldownByNpc.get(agent.npc.id) ?? new Map<string, number>()
+    bySkill.set(skillKey, now + ms)
+    this.cooldownByNpc.set(agent.npc.id, bySkill)
+
+    const reported = this.cooldownReportByNpc.get(agent.npc.id)
+    if (reported) {
+      reported.delete(skillKey)
+    }
   }
 
   private shouldReportCooldown(agent: NpcAgent, skillKey: string): boolean {
     const now = Date.now()
-    const reportKey = `cooldown:reported:${skillKey}`
-    const reportUntil = agent.state.get(reportKey)
+    const bySkill = this.cooldownReportByNpc.get(agent.npc.id) ?? new Map<string, number>()
+    const reportUntil = bySkill.get(skillKey)
     if (typeof reportUntil === 'number' && now < reportUntil) {
       return false
     }
 
     const windowMs = skillKey === '__all__' ? 180_000 : 5_000
-    agent.state.set(reportKey, now + windowMs)
+    bySkill.set(skillKey, now + windowMs)
+    this.cooldownReportByNpc.set(agent.npc.id, bySkill)
     return true
-  }
-
-  private resolveCooldownMs(errorMessage: string): number {
-    if (errorMessage.includes('requires connected mode executor')) {
-      return 60_000
-    }
-    if (errorMessage.includes('invalidSkillArgs')) {
-      return 10_000
-    }
-    return 3_000
   }
 
   private areAllAllowedSkillsInCooldown(agent: NpcAgent, skills: string[]): boolean {
@@ -231,47 +229,19 @@ export class NpcEngine {
     return skills.every((skill) => this.isSkillCoolingDown(agent, skill))
   }
 
-  private normalizeDecisionArgs(agent: NpcAgent, skill: string, args: unknown): unknown {
-    if (skill !== 'goToCarDrivePark') {
-      return args
-    }
-
-    if (!args || typeof args !== 'object') {
-      return args
-    }
-
-    const src = args as Record<string, unknown>
-    const out: Record<string, unknown> = { ...src }
-
-    if (!out.dest && src.destination && typeof src.destination === 'object') {
-      out.dest = src.destination
-    }
-
-    if (typeof out.vehicleNetId !== 'number') {
-      const observedVeh = agent.observations.assignedVeh
-      if (observedVeh && typeof observedVeh === 'object') {
-        const netId = (observedVeh as { netId?: unknown }).netId
-        if (typeof netId === 'number') {
-          out.vehicleNetId = netId
-        }
-      }
-    }
-
-    if (!out.dest) {
-      const observedDest = agent.observations.dest
-      if (observedDest && typeof observedDest === 'object') {
-        out.dest = observedDest
-      }
-    }
-
-    return out
-  }
-
   private buildCtx(agent: NpcAgent) {
     const snapshot = this.contextBuilder.buildSnapshot(agent.observations)
     return {
       npc: agent.npc,
+      controllerId: agent.controllerId,
       goal: agent.goal,
+      setGoal: (goal: string | { id: string; hint?: string }) => {
+        if (typeof goal === 'string') {
+          agent.goal = { ...agent.goal, hint: goal }
+          return
+        }
+        agent.goal = goal
+      },
       snapshot,
       memory: agent.memory,
       observations: agent.observations,
@@ -281,7 +251,33 @@ export class NpcEngine {
           payload: unknown,
           opts?: { scope?: 'server' | 'nearby' | 'owner' | 'all'; radius?: number },
         ) => {
-          this.events.emit(name, agent.npc.id, payload, opts)
+          this.events.emit(name, agent.npc.id, payload, { ...opts, controllerId: agent.controllerId }, {
+            npc: agent.npc,
+            controllerId: agent.controllerId,
+            goal: agent.goal,
+            setGoal: (goal: string | { id: string; hint?: string }) => {
+              if (typeof goal === 'string') {
+                agent.goal = { ...agent.goal, hint: goal }
+                return
+              }
+              agent.goal = goal
+            },
+            snapshot,
+            memory: agent.memory,
+            observations: agent.observations,
+            events: {
+              emit: (eventName: string, eventPayload: unknown, eventOpts?: { scope?: 'server' | 'nearby' | 'owner' | 'all'; radius?: number }) => {
+                this.events.emit(eventName, agent.npc.id, eventPayload, { ...eventOpts, controllerId: agent.controllerId })
+              },
+            },
+            transport: this.transport,
+            state: {
+              get: <T>(k: string) => agent.state.get(k) as T | undefined,
+              set: (k: string, v: unknown) => {
+                agent.state.set(k, v)
+              },
+            },
+          })
         },
       },
       transport: this.transport,
