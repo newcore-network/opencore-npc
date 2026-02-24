@@ -2,11 +2,16 @@
 
 This guide shows the minimum setup for `@open-core/npc`.
 
-## 1) Install Plugin on Server
+## 1) Install plugin on server
 
 ```ts
 import { Server } from '@open-core/framework/server'
-import { npcPlugin } from '@open-core/npc/server'
+import { OpenRouterAdapter, npcPlugin } from '@open-core/npc/server'
+
+const llmProvider = new OpenRouterAdapter({
+  apiKey: process.env.OPENROUTER_API_KEY!,
+  defaultModel: 'openai/gpt-4o-mini',
+})
 
 Server.init({
   mode: 'RESOURCE',
@@ -14,6 +19,7 @@ Server.init({
     npcPlugin({
       adapter: 'fivem',
       connected: true,
+      llmProvider,
       defaults: {
         tickMsNear: 350,
         tickMsFar: 1500,
@@ -24,7 +30,7 @@ Server.init({
 })
 ```
 
-## 2) Install Plugin on Client
+## 2) Install plugin on client
 
 ```ts
 import { Client } from '@open-core/framework/client'
@@ -36,33 +42,55 @@ Client.init({
 })
 ```
 
-## 3) Create a Controller
+## 3) Create a controller
 
 ```ts
-import { Server } from '@open-core/framework/server'
 import {
-  NPC,
-  BuiltInNpcSkills,
-  NpcControllerBase,
-  NpcRulePlanner,
-  type NpcAgentConfigurator,
+  NpcController,
+  OnNpcEvent,
+  type NpcContext,
 } from '@open-core/npc/server'
 
-@Server.Controller()
-@NPC({ group: 'drivers', tickMs: 500 })
-export class DriverController extends NpcControllerBase {
-  override configure(agent: NpcAgentConfigurator) {
-    agent
-      .planWith(new NpcRulePlanner())
-      .allowSkills(BuiltInNpcSkills.goToCarDrivePark)
-      .withConstraints((constraints) =>
-        constraints.allow(BuiltInNpcSkills.goToCarDrivePark),
-      )
+@NpcController({
+  id: 'drivers',
+  planner: 'ai',
+  skills: ['goToCarDrivePark'],
+  constraints: { limitCallsPerTurn: 1 },
+  tickMs: 500,
+})
+export class DriverController {
+  @OnNpcEvent('spawn')
+  onSpawn(ctx: NpcContext) {
+    ctx.setGoal('Get in the car, drive, and park safely')
   }
 }
 ```
 
-## 4) Spawn and Attach NPC
+## 4) Create a skill with DI
+
+```ts
+import { inject, injectable } from 'tsyringe'
+import { NpcSkill, type NpcContext } from '@open-core/npc/server'
+
+@injectable()
+class WeaponService {
+  getDefault() {
+    return 'pistol'
+  }
+}
+
+@NpcSkill('patrol')
+export class PatrolSkill {
+  constructor(@inject(WeaponService) private readonly weapons: WeaponService) {}
+
+  async execute(ctx: NpcContext) {
+    ctx.events.emit('npc:state', { state: 'patrolling', weapon: this.weapons.getDefault() })
+    return { ok: true }
+  }
+}
+```
+
+## 5) Spawn and attach NPC
 
 ```ts
 import { Npc } from '@open-core/npc/server'
@@ -74,10 +102,10 @@ const npc = await Npc.spawn({
   networked: true,
 })
 
-Npc.attach(npc, { group: 'drivers' })
+Npc.attach(npc, { controllerId: 'drivers' })
 ```
 
-## 5) Send Observations
+## 6) Send observations
 
 ```ts
 type DriverObs = {
@@ -93,7 +121,7 @@ Npc.observe<DriverObs>(npc).set({
 })
 ```
 
-## 6) Force Manual Tick (Optional)
+## 7) Force manual tick (optional)
 
 ```ts
 await Npc.run(npc)

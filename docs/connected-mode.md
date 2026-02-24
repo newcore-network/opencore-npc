@@ -5,9 +5,17 @@ Connected mode delegates certain skill execution to a client (useful for client-
 ## Enable
 
 ```ts
+import { OpenRouterAdapter, npcPlugin } from '@open-core/npc/server'
+
+const llmProvider = new OpenRouterAdapter({
+  apiKey: process.env.OPENROUTER_API_KEY!,
+  defaultModel: 'openai/gpt-4o-mini',
+})
+
 npcPlugin({
   adapter: 'fivem',
   connected: true,
+  llmProvider,
 })
 ```
 

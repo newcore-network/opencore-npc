@@ -1,37 +1,21 @@
-import { injectable } from 'tsyringe'
-import { NPC_METADATA_KEYS } from './metadata-keys'
+import type { NpcSkillContract } from '../types'
+import { NPC_INTELLIGENCE_METADATA } from './metadata-keys'
 
-export type NpcSkillOptions = {
-  key: string
-  tags?: string[]
-  mutex?: string
-}
+type SkillCtor = new (...args: any[]) => NpcSkillContract
 
-type SkillConstructor<T = unknown> = new (...args: never[]) => T
+const skillCtors: SkillCtor[] = []
 
-const registry = new Set<SkillConstructor>()
-
-export function getNpcSkillRegistry(): SkillConstructor[] {
-  return [...registry]
-}
-
-/**
- * Marks a class as an NPC skill provider.
- *
- * @param options - Static metadata used during skill registration.
- */
-export function NpcSkill(key: string, options?: Omit<NpcSkillOptions, 'key'>) {
-  return (target: SkillConstructor) => {
-    injectable()(target as never)
-    Reflect.defineMetadata(
-      NPC_METADATA_KEYS.SKILL,
-      {
-        key,
-        tags: options?.tags,
-        mutex: options?.mutex,
-      } satisfies NpcSkillOptions,
-      target,
-    )
-    registry.add(target)
+export function NpcSkill(key: string): ClassDecorator {
+  return (target) => {
+    Reflect.defineMetadata(NPC_INTELLIGENCE_METADATA.SKILL, key, target)
+    skillCtors.push(target as unknown as SkillCtor)
   }
+}
+
+export function getDecoratedNpcSkillClasses(): SkillCtor[] {
+  return [...skillCtors]
+}
+
+export function getDecoratedNpcSkillKey(target: object): string | undefined {
+  return Reflect.getMetadata(NPC_INTELLIGENCE_METADATA.SKILL, target) as string | undefined
 }

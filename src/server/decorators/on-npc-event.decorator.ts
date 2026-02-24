@@ -1,12 +1,7 @@
-import { NPC_METADATA_KEYS } from './metadata-keys'
+import { NPC_INTELLIGENCE_METADATA } from './metadata-keys'
 
-/**
- * Registers a gameplay event listener on a method.
- *
- * @param eventName - Gameplay event key (example: `npc:state`).
- */
-export function OnNpcEvent(eventName: string) {
-  return (target: object, propertyKey: string | symbol): void => {
-    Reflect.defineMetadata(NPC_METADATA_KEYS.EVENT, { eventName }, target, propertyKey)
+export function OnNpcEvent(eventName: string): MethodDecorator {
+  return (_target, _propertyKey, descriptor) => {
+    Reflect.defineMetadata(NPC_INTELLIGENCE_METADATA.EVENT, eventName, descriptor.value as object)
   }
 }

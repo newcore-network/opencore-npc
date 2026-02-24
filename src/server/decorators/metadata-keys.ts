@@ -1,7 +1,6 @@
-/** Internal metadata keys used by NPC server decorators. */
-export const NPC_METADATA_KEYS = {
-  CONTROLLER: 'npc:meta:controller',
-  SKILL: 'npc:meta:skill',
-  HOOK: 'npc:meta:hook',
-  EVENT: 'npc:meta:event',
-} as const
+export const NPC_INTELLIGENCE_METADATA = {
+  CONTROLLER: Symbol('npc:intelligence:controller'),
+  SKILL: Symbol('npc:intelligence:skill'),
+  HOOK: Symbol('npc:intelligence:hook'),
+  EVENT: Symbol('npc:intelligence:event'),
+}

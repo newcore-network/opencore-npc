@@ -1,5 +1,4 @@
-/** Internal metadata keys used by NPC client decorators. */
-export const NPC_CLIENT_METADATA_KEYS = {
-  CONTROLLER: 'npc:client:meta:controller',
-  EVENT: 'npc:client:meta:event',
-} as const
+export const NPC_INTELLIGENCE_CLIENT_METADATA = {
+  CONTROLLER: Symbol('npc:intelligence:client:controller'),
+  EVENT: Symbol('npc:intelligence:client:event'),
+}

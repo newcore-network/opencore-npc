@@ -2,39 +2,71 @@
 
 ## Controller Model
 
-Each NPC group is managed by one controller class using `@NPC({ group })`.
+Each NPC behavior is managed by one controller class using `@NpcController({ id })`.
 
-- `planWith(...)`: set planner strategy.
-- `allowSkills(...)`: explicit allowed skills.
-- `withConstraints(...)`: runtime validation and limits.
+- `id`: controller scope key used at attach time.
+- `planner`: `'rule' | 'ai' | NpcPlanner instance`.
+- `skills`: allowed skill keys.
+- `constraints`: optional runtime limits.
 
 ```ts
-import { Server } from '@open-core/framework/server'
 import {
-  NPC,
-  BuiltInNpcSkills,
-  NpcControllerBase,
-  NpcRulePlanner,
+  NpcController,
+  OnNpcEvent,
+  type NpcContext,
 } from '@open-core/npc/server'
 
-@Server.Controller()
-@NPC({ group: 'patrol' })
-export class PatrolController extends NpcControllerBase {
-  override configure(agent) {
-    agent
-      .planWith(new NpcRulePlanner())
-      .allowSkills(BuiltInNpcSkills.wanderArea, BuiltInNpcSkills.moveTo)
-      .withConstraints((c) =>
-        c
-          .allow(BuiltInNpcSkills.wanderArea, BuiltInNpcSkills.moveTo)
-          .limitCallsPerTurn(1)
-          .mutexGroup('movement', [BuiltInNpcSkills.wanderArea, BuiltInNpcSkills.moveTo]),
-      )
+@NpcController({
+  id: 'patrol',
+  planner: 'rule',
+  skills: ['wanderArea', 'moveTo'],
+  constraints: { limitCallsPerTurn: 1 },
+})
+export class PatrolController {
+  @OnNpcEvent('spawn')
+  onSpawn(ctx: NpcContext) {
+    ctx.setGoal('Patrol this area')
   }
 }
 ```
 
-## Typed Skill References
+## Skills with DI
+
+Skills are auto-discovered from `@NpcSkill(...)` and resolved from DI.
+
+```ts
+import { inject, injectable } from 'tsyringe'
+import { NpcSkill, type NpcContext } from '@open-core/npc/server'
+
+@injectable()
+class WeaponService {
+  getDefault() {
+    return 'pistol'
+  }
+}
+
+@NpcSkill('attack')
+export class AttackSkill {
+  constructor(@inject(WeaponService) private readonly weapons: WeaponService) {}
+
+  async execute(ctx: NpcContext) {
+    ctx.events.emit('npc:state', { state: 'attacking', weapon: this.weapons.getDefault() })
+    return { ok: true }
+  }
+}
+```
+
+## Error handling contract for skills
+
+Skills should not throw in normal flow. Return typed results instead:
+
+```ts
+return { ok: false, error: 'target_not_visible', cooldownPenaltyMs: 5000 }
+```
+
+The engine applies cooldown from `cooldownPenaltyMs` directly (no string matching).
+
+## Typed skill references (optional)
 
 Use typed refs to avoid typo-prone strings.
 
@@ -43,7 +75,11 @@ import { skillRef } from '@open-core/npc/server'
 
 const escortTarget = skillRef('escortTarget')
 
-agent.allowSkills(escortTarget)
+@NpcController({
+  id: 'escort',
+  skills: [escortTarget],
+})
+export class EscortController {}
 ```
 
 ## Built-in Skill Refs
@@ -59,20 +95,24 @@ agent.allowSkills(escortTarget)
 - `parkVehicle`
 - `goToCarDrivePark`
 
-## Hooks and Events (Server)
+## Hooks and events (server)
 
-Use decorators inside any `@NPC` controller class.
+Use decorators inside any `@NpcController` class.
+
+Important: handlers are isolated by `id`. A controller only receives its own NPC scope.
 
 ```ts
-import { OnNpcHook, OnNpcEvent } from '@open-core/npc/server'
+import { OnNpcHook, OnNpcEvent, type NpcContext } from '@open-core/npc/server'
 
 @OnNpcHook('skillError')
-onSkillError(_ctx: unknown, info: { skill?: string; error?: string }) {
+onSkillError(ctx: NpcContext, info: { skill?: string; error?: string }) {
+  console.warn('controller', ctx.controllerId)
   console.warn('skillError', info.skill, info.error)
 }
 
 @OnNpcEvent('npc:state')
-onNpcState(event: { npcId: string; payload: { state?: string } }) {
+onNpcState(ctx: NpcContext, event: { npcId: string; payload: { state?: string } }) {
+  console.log('controller', ctx.controllerId)
   console.log('state', event.npcId, event.payload.state)
 }
 ```
