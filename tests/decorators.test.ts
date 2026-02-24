@@ -1,28 +1,47 @@
 import { describe, expect, it } from 'vitest'
-import { NpcController } from '../src/server/decorators/npc.decorator'
-import { NpcSkill } from '../src/server/decorators/npc-skill.decorator'
+import {
+  getNpcIntelligentControllers,
+  NpcIntelligentController,
+} from '../src/server/decorators/npc.decorator'
+import { NpcSkill, npcSkill } from '../src/server/decorators/npc-skill.decorator'
 import { OnNpcHook } from '../src/server/decorators/npc-hook.decorator'
 import { OnNpcEvent } from '../src/server/decorators/on-npc-event.decorator'
-import { NPC_METADATA_KEYS } from '../src/server/decorators/metadata-keys'
+import { NPC_INTELLIGENCE_METADATA } from '../src/server/decorators/metadata-keys'
 
-describe('npc decorators', () => {
-  it('@NpcController writes controller metadata', () => {
-    @NpcController({ id: 'drivers', tickMs: 500, skills: ['moveTo'] })
+describe('npc intelligence decorators', () => {
+  it('@NpcIntelligentController stores controller metadata', () => {
+    @NpcSkill('moveTo')
+    class MoveToSkill {
+      async execute() {
+        return { ok: true }
+      }
+    }
+
+    @NpcIntelligentController({ id: 'drivers', tickMs: 500, skills: [npcSkill(MoveToSkill)] })
     class DriverController {}
 
-    const meta = Reflect.getMetadata(NPC_METADATA_KEYS.CONTROLLER, DriverController)
-    expect(meta).toEqual({ id: 'drivers', tickMs: 500, skills: ['moveTo'] })
+    const controllers = getNpcIntelligentControllers()
+    const meta = Reflect.getMetadata(NPC_INTELLIGENCE_METADATA.CONTROLLER, DriverController)
+
+    expect(controllers.get('drivers')?.id).toBe('drivers')
+    expect(controllers.get('drivers')?.skills?.[0]?.key).toBe('moveTo')
+    expect(meta.id).toBe('drivers')
   })
 
-  it('@NpcSkill writes skill metadata', () => {
-    @NpcSkill('driveTo', { tags: ['vehicle'], mutex: 'movement' })
-    class DriveToSkill {}
+  it('@NpcSkill + npcSkill produce typed skill refs', () => {
+    @NpcSkill('driveTo')
+    class DriveToSkill {
+      async execute() {
+        return { ok: true }
+      }
+    }
 
-    const meta = Reflect.getMetadata(NPC_METADATA_KEYS.SKILL, DriveToSkill)
-    expect(meta).toEqual({ key: 'driveTo', tags: ['vehicle'], mutex: 'movement' })
+    const ref = npcSkill(DriveToSkill)
+    expect(ref.key).toBe('driveTo')
+    expect(ref.token).toBe(DriveToSkill)
   })
 
-  it('hook and event decorators attach method metadata', () => {
+  it('hook and event decorators attach metadata on methods', () => {
     class TestController {
       @OnNpcHook('beforeSkill')
       onHook() {}
@@ -31,18 +50,10 @@ describe('npc decorators', () => {
       onEvent() {}
     }
 
-    const hookMeta = Reflect.getMetadata(
-      NPC_METADATA_KEYS.HOOK,
-      TestController.prototype,
-      'onHook',
-    )
-    const eventMeta = Reflect.getMetadata(
-      NPC_METADATA_KEYS.EVENT,
-      TestController.prototype,
-      'onEvent',
-    )
+    const hookMeta = Reflect.getMetadata(NPC_INTELLIGENCE_METADATA.HOOK, TestController.prototype.onHook)
+    const eventMeta = Reflect.getMetadata(NPC_INTELLIGENCE_METADATA.EVENT, TestController.prototype.onEvent)
 
-    expect(hookMeta).toEqual({ hook: 'beforeSkill' })
-    expect(eventMeta).toEqual({ eventName: 'npc:state' })
+    expect(hookMeta).toBe('beforeSkill')
+    expect(eventMeta).toBe('npc:state')
   })
 })

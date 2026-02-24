@@ -1,70 +1,59 @@
 import { describe, expect, it, vi } from 'vitest'
-import { NpcController } from '../src/server/decorators/npc.decorator'
-import { OnNpcEvent } from '../src/server/decorators/on-npc-event.decorator'
-import { OnNpcHook } from '../src/server/decorators/npc-hook.decorator'
-import { NpcControllerRuntime } from '../src/server/runtime/controllers/npc-controller.runtime'
-import { NpcHookBusServer } from '../src/server/runtime/events/npc-hook-bus.server'
-import { NpcEventBusServer } from '../src/server/runtime/events/npc-event-bus.server'
-import { NpcRulePlanner } from '../src/server/runtime/planner/npc-rule-planner'
+import { IntelligenceEngine } from '../src/server/engine/intelligence-engine'
+import { NpcSkillRegistry } from '../src/server/skills/skill-registry'
 
 describe('Npc controller isolation', () => {
-  it('executes handlers only for matching controller id', async () => {
-    const guardHook = vi.fn()
-    const civilianHook = vi.fn()
-    const guardEvent = vi.fn()
-    const civilianEvent = vi.fn()
+  it('uses skill sets from each attached controller definition', async () => {
+    const guardSkill = vi.fn(async () => ({ ok: true, memory: 'guard' }))
+    const civilianSkill = vi.fn(async () => ({ ok: true, memory: 'civilian' }))
 
-    @NpcController({ id: 'guard', skills: ['moveTo'] })
-    class GuardController {
-      @OnNpcHook('beforePlan')
-      onBeforePlan(ctx: unknown) {
-        guardHook(ctx)
-      }
+    const registry = new NpcSkillRegistry()
+    registry.register({ key: 'guardSkill', execute: guardSkill })
+    registry.register({ key: 'civilianSkill', execute: civilianSkill })
 
-      @OnNpcEvent('spawn')
-      onSpawn(ctx: unknown) {
-        guardEvent(ctx)
-      }
-    }
+    const byId = new Map<string, any>([
+      [
+        'npc-guard',
+        {
+          npcId: 'npc-guard',
+          netId: 1,
+          exists: true,
+          setSyncedState: vi.fn(),
+        },
+      ],
+      [
+        'npc-civilian',
+        {
+          npcId: 'npc-civilian',
+          netId: 2,
+          exists: true,
+          setSyncedState: vi.fn(),
+        },
+      ],
+    ])
 
-    @NpcController({ id: 'civilian', skills: ['moveTo'] })
-    class CivilianController {
-      @OnNpcHook('beforePlan')
-      onBeforePlan(ctx: unknown) {
-        civilianHook(ctx)
-      }
+    const npcs = {
+      getById(id: string) {
+        return byId.get(id)
+      },
+    } as any
 
-      @OnNpcEvent('spawn')
-      onSpawn(ctx: unknown) {
-        civilianEvent(ctx)
-      }
-    }
+    const engine = new IntelligenceEngine(npcs, registry)
+    const controllers = new Map<string, any>([
+      ['guard', { id: 'guard', skills: ['guardSkill'] }],
+      ['civilian', { id: 'civilian', skills: ['civilianSkill'] }],
+    ])
 
-    const hooks = new NpcHookBusServer()
-    const events = new NpcEventBusServer()
-    const runtime = new NpcControllerRuntime(hooks, events, () => new NpcRulePlanner())
-    runtime.initialize()
+    engine.attach('npc-guard', { controllerId: 'guard' }, controllers)
+    engine.attach('npc-civilian', { controllerId: 'civilian' }, controllers)
 
-    const guardCtx = {
-      controllerId: 'guard',
-      npc: { id: 'npc-1' },
-      goal: { id: 'guard' },
-      setGoal: vi.fn(),
-      snapshot: {},
-      memory: [],
-      observations: {},
-      events: { emit: vi.fn() },
-      transport: {},
-      state: { get: vi.fn(), set: vi.fn() },
-    }
+    engine.setObservation('npc-guard', { nextSkill: 'guardSkill' })
+    engine.setObservation('npc-civilian', { nextSkill: 'civilianSkill' })
 
-    hooks.emit('beforePlan', guardCtx)
-    events.emit('spawn', 'npc-1', { state: 'spawned' }, { scope: 'server', controllerId: 'guard' }, guardCtx as any)
-    await Promise.resolve()
+    await engine.runOnce('npc-guard')
+    await engine.runOnce('npc-civilian')
 
-    expect(guardHook).toHaveBeenCalledTimes(1)
-    expect(civilianHook).toHaveBeenCalledTimes(0)
-    expect(guardEvent).toHaveBeenCalledTimes(1)
-    expect(civilianEvent).toHaveBeenCalledTimes(0)
+    expect(guardSkill).toHaveBeenCalledTimes(1)
+    expect(civilianSkill).toHaveBeenCalledTimes(1)
   })
 })

@@ -1,43 +1,68 @@
 import { describe, expect, it, vi } from 'vitest'
 import { inject, injectable } from 'tsyringe'
 import { GLOBAL_CONTAINER } from '@open-core/framework'
-import { createServerRuntime } from '@open-core/framework/server'
-import { npcPlugin } from '../src/server/npc.plugin'
-import { NpcSkill } from '../src/server/decorators/npc-skill.decorator'
-import { NpcSkillRegistry } from '../src/server/runtime/engine/npc-skill-registry'
+import { createServerRuntime, Npcs } from '@open-core/framework/server'
+import { npcIntelligencePlugin } from '../src/server/npc.plugin'
+import { NpcSkill, npcSkill } from '../src/server/decorators/npc-skill.decorator'
+import {
+  getNpcIntelligentControllers,
+  NpcIntelligentController,
+} from '../src/server/decorators/npc.decorator'
+import { IntelligentNpcAPI } from '../src/server/api/npc-api'
 
 describe('NpcSkill DI integration', () => {
-  it('resolves decorated skills through DI', async () => {
+  it('resolves class-based skills through DI and typed refs', async () => {
     const weaponService = { kind: 'rifle' }
     GLOBAL_CONTAINER.registerInstance('weapon-service', weaponService)
 
+    @injectable()
     @NpcSkill('diPatrol')
     class PatrolSkill {
-      constructor(@inject('weapon-service') public readonly weaponService: { kind: string }) {}
+      constructor(@inject('weapon-service') private readonly service: { kind: string }) {}
 
-      readonly key = 'diPatrol'
       async execute() {
-        return { ok: true as const }
+        return { ok: true as const, memory: this.service.kind }
       }
     }
 
+    @NpcIntelligentController({ id: 'di-controller', skills: [npcSkill(PatrolSkill)] })
+    class DiController {}
+
     const server = createServerRuntime()
-    let registry: NpcSkillRegistry | undefined
+    let api: IntelligentNpcAPI | undefined
     const register = vi.fn((token: unknown, value: unknown) => {
-      if (token === NpcSkillRegistry) {
-        registry = value as NpcSkillRegistry
+      if (token === IntelligentNpcAPI) {
+        api = value as IntelligentNpcAPI
       }
     })
 
-    await npcPlugin().install({
+    const npcEntity = {
+      npcId: 'npc-1',
+      netId: 11,
+      exists: true,
+      setSyncedState: vi.fn(),
+    }
+
+    GLOBAL_CONTAINER.registerInstance(Npcs, {
+      create: vi.fn().mockResolvedValue({ result: { success: true }, npc: npcEntity }),
+      getById: vi.fn().mockReturnValue(npcEntity),
+      deleteById: vi.fn(),
+    } as never)
+
+    await npcIntelligencePlugin().install({
       server,
       di: { register },
       config: { get: vi.fn() },
     })
 
-    expect(registry).toBeDefined()
-    const resolved = registry?.get('diPatrol') as PatrolSkill | undefined
-    expect(resolved).toBeDefined()
-    expect(resolved?.weaponService).toBe(weaponService)
+    expect(getNpcIntelligentControllers().get('di-controller')).toBeDefined()
+    expect(api).toBeDefined()
+
+    const npc = await api!.spawn({ model: 's_m_y_cop_01', position: { x: 0, y: 0, z: 0 } })
+    api!.attach(npc, { controllerId: 'di-controller' })
+    api!.setObservation(npc, { nextSkill: 'diPatrol' })
+    await api!.run(npc)
+
+    expect(api!.memory(npc)).toContain('rifle')
   })
 })

@@ -1,14 +1,16 @@
 import type { NpcSpawnOptions, Npcs } from '@open-core/framework/server'
 import type { NpcGoal, NpcIdentity, NpcSpawnInput } from '../../shared'
-import type { AttachOptions, NpcControllerDefinition } from '../types'
+import type { AttachOptions, ResolvedNpcControllerDefinition } from '../types'
 import { IntelligenceEngine } from '../engine/intelligence-engine'
 
-export class NpcApi {
+/** Public server API for NPC intelligence orchestration. */
+export class IntelligentNpcAPI {
   constructor(
     private readonly npcs: Npcs,
     private readonly engine: IntelligenceEngine,
-  ) {}
+  ) { }
 
+  /** Spawns an NPC through framework core and returns its identity. */
   async spawn(input: NpcSpawnInput): Promise<NpcIdentity> {
     const options: NpcSpawnOptions = {
       model: input.model,
@@ -30,47 +32,60 @@ export class NpcApi {
     }
   }
 
+  /** Destroys an NPC and detaches its intelligence runtime. */
   destroy(npc: NpcIdentity): void {
     this.engine.detach(npc.id)
     this.npcs.deleteById(npc.id)
   }
 
+  /** Attaches intelligence runtime to an existing NPC. */
   attach(npc: NpcIdentity, options: AttachOptions = {}): void {
     this.engine.attach(npc.id, options, this.controllers)
   }
 
+  /** Detaches intelligence runtime from an NPC. */
   detach(npc: NpcIdentity): void {
     this.engine.detach(npc.id)
   }
 
+  /** Merges an observation patch for planner input. */
   setObservation(npc: NpcIdentity, patch: Record<string, unknown>): void {
     this.engine.setObservation(npc.id, patch)
   }
 
+  /** Creates a fluent observation handle for one NPC. */
   observe<TObservation extends Record<string, unknown>>(npc: NpcIdentity): NpcObservationHandle<TObservation> {
     return new NpcObservationHandle<TObservation>(this, npc)
   }
 
+  /** Runs a single intelligence tick for one NPC. */
   async run(npc: NpcIdentity): Promise<void> {
     await this.engine.runOnce(npc.id)
   }
 
+  /** Returns runtime memory entries for one NPC. */
   memory(npc: NpcIdentity): unknown[] {
     return this.engine.memory(npc.id)
   }
 
-  setControllers(controllers: Map<string, NpcControllerDefinition>): void {
+  /** Creates a fluent runtime handle for one NPC agent. */
+  agent(npc: NpcIdentity): NpcAgentHandle {
+    return new NpcAgentHandle(this, npc)
+  }
+
+  /** Internal setter used by plugin bootstrap to provide controller registry. */
+  setControllers(controllers: Map<string, ResolvedNpcControllerDefinition>): void {
     this.controllers = controllers
   }
 
-  private controllers = new Map<string, NpcControllerDefinition>()
+  private controllers = new Map<string, ResolvedNpcControllerDefinition>()
 }
 
 export class NpcObservationHandle<TObservation extends Record<string, unknown>> {
   constructor(
-    private readonly api: NpcApi,
+    private readonly api: IntelligentNpcAPI,
     private readonly npc: NpcIdentity,
-  ) {}
+  ) { }
 
   set(patch: Partial<TObservation> & Record<string, unknown>): this {
     this.api.setObservation(this.npc, patch)
@@ -80,9 +95,9 @@ export class NpcObservationHandle<TObservation extends Record<string, unknown>> 
 
 export class NpcAgentHandle {
   constructor(
-    private readonly api: NpcApi,
+    private readonly api: IntelligentNpcAPI,
     private readonly npc: NpcIdentity,
-  ) {}
+  ) { }
 
   run(): Promise<void> {
     return this.api.run(this.npc)
@@ -93,47 +108,7 @@ export class NpcAgentHandle {
   }
 }
 
-let singleton: NpcApi | undefined
-
-export function setNpcApiSingleton(api: NpcApi): void {
-  singleton = api
-}
-
-export const Npc = {
-  spawn(input: NpcSpawnInput) {
-    return requireSingleton().spawn(input)
-  },
-  destroy(npc: NpcIdentity) {
-    return requireSingleton().destroy(npc)
-  },
-  attach(npc: NpcIdentity, options?: AttachOptions) {
-    return requireSingleton().attach(npc, options)
-  },
-  detach(npc: NpcIdentity) {
-    return requireSingleton().detach(npc)
-  },
-  observe<TObservation extends Record<string, unknown>>(npc: NpcIdentity) {
-    return requireSingleton().observe<TObservation>(npc)
-  },
-  setObservation(npc: NpcIdentity, patch: Record<string, unknown>) {
-    return requireSingleton().setObservation(npc, patch)
-  },
-  run(npc: NpcIdentity) {
-    return requireSingleton().run(npc)
-  },
-  memory(npc: NpcIdentity) {
-    return requireSingleton().memory(npc)
-  },
-  agent(npc: NpcIdentity) {
-    return new NpcAgentHandle(requireSingleton(), npc)
-  },
-}
-
-function requireSingleton(): NpcApi {
-  if (!singleton) {
-    throw new Error('NpcApi not initialized. Did you install npcIntelligencePlugin()?')
-  }
-  return singleton
-}
-
 export type { NpcGoal }
+
+/** Injectable alias name for the intelligence service. */
+export { IntelligentNpcAPI as NpcIntelligence }

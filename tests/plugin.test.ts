@@ -1,12 +1,19 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createServerRuntime } from '@open-core/framework/server'
-import { npcPlugin } from '../src/server/npc.plugin'
+import { GLOBAL_CONTAINER } from '@open-core/framework'
+import { createServerRuntime, Npcs } from '@open-core/framework/server'
+import { npcIntelligencePlugin } from '../src/server/npc.plugin'
 
-describe('npcPlugin', () => {
+describe('npcIntelligencePlugin', () => {
   it('registers server API extensions', async () => {
     const server = createServerRuntime()
     const register = vi.fn()
-    const plugin = npcPlugin()
+    const plugin = npcIntelligencePlugin()
+
+    GLOBAL_CONTAINER.registerInstance(Npcs, {
+      getById: vi.fn(),
+      create: vi.fn(),
+      deleteById: vi.fn(),
+    } as never)
 
     await plugin.install({
       server,
@@ -14,7 +21,7 @@ describe('npcPlugin', () => {
       config: { get: vi.fn() },
     })
 
-    expect(typeof (server as any).NpcController).toBe('function')
+    expect(typeof (server as any).NpcIntelligentController).toBe('function')
     expect(typeof (server as any).NpcSkill).toBe('function')
     expect(typeof (server as any).OnNpcHook).toBe('function')
     expect(typeof (server as any).OnNpcEvent).toBe('function')
@@ -22,6 +29,6 @@ describe('npcPlugin', () => {
   })
 
   it('exposes a stable plugin name', () => {
-    expect(npcPlugin().name).toBe('npc')
+    expect(npcIntelligencePlugin().name).toBe('npc-intelligence')
   })
 })

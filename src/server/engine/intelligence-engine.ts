@@ -1,6 +1,6 @@
 import type { NPC, Npcs } from '@open-core/framework/server'
 import type { NpcGoal } from '../../shared'
-import type { AttachOptions, NpcContext, NpcControllerDefinition, NpcPlanner } from '../types'
+import type { AttachOptions, NpcContext, NpcPlanner, ResolvedNpcControllerDefinition } from '../types'
 import { NpcRulePlanner } from '../ai/rule-planner'
 import { NpcSkillRegistry } from '../skills/skill-registry'
 
@@ -41,12 +41,12 @@ export class IntelligenceEngine {
   attach(
     npcId: string,
     options: AttachOptions,
-    controllers: Map<string, NpcControllerDefinition>,
+    controllers: Map<string, ResolvedNpcControllerDefinition>,
   ): void {
     const controller = options.controllerId ? controllers.get(options.controllerId) : undefined
     const planner = options.planner ?? toPlanner(controller?.planner)
     const goal = options.goal ?? { id: controller?.id ?? 'default' }
-    const allowSkills = options.allowSkills ?? controller?.skills ?? this.skills.keys()
+    const allowSkills = options.skills?.map((item) => item.key) ?? controller?.skills ?? this.skills.keys()
 
     this.agents.set(npcId, {
       npcId,
@@ -139,13 +139,8 @@ export class IntelligenceEngine {
   }
 }
 
-function toPlanner(
-  planner: NpcControllerDefinition['planner'] | undefined,
-): NpcPlanner {
-  if (!planner || planner === 'rule' || planner === 'ai') {
-    return new NpcRulePlanner()
-  }
-  return planner
+function toPlanner(planner: NpcPlanner | undefined): NpcPlanner {
+  return planner ?? new NpcRulePlanner()
 }
 
 function buildContext(npcs: Npcs, npcEntity: NPC, agent: Agent): NpcContext {
