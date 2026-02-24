@@ -21,10 +21,17 @@ describe('npcIntelligencePlugin', () => {
       config: { get: vi.fn() },
     })
 
-    expect(typeof (server as any).NpcIntelligentController).toBe('function')
-    expect(typeof (server as any).NpcSkill).toBe('function')
-    expect(typeof (server as any).OnNpcHook).toBe('function')
-    expect(typeof (server as any).OnNpcEvent).toBe('function')
+    const pluginApi = server as unknown as {
+      NpcIntelligentController?: unknown
+      NpcSkill?: unknown
+      OnNpcHook?: unknown
+      OnNpcEvent?: unknown
+    }
+
+    expect(typeof pluginApi.NpcIntelligentController).toBe('function')
+    expect(typeof pluginApi.NpcSkill).toBe('function')
+    expect(typeof pluginApi.OnNpcHook).toBe('function')
+    expect(typeof pluginApi.OnNpcEvent).toBe('function')
     expect(register).toHaveBeenCalled()
   })
 

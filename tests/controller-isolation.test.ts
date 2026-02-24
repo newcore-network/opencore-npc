@@ -11,14 +11,15 @@ describe('Npc controller isolation', () => {
     registry.register({ key: 'guardSkill', execute: guardSkill })
     registry.register({ key: 'civilianSkill', execute: civilianSkill })
 
-    const byId = new Map<string, any>([
+    const byId = new Map<string, { npcId: string; netId: number; exists: boolean; setPosition: () => void; setHeading: () => void }>([
       [
         'npc-guard',
         {
           npcId: 'npc-guard',
           netId: 1,
           exists: true,
-          setSyncedState: vi.fn(),
+          setPosition: vi.fn(),
+          setHeading: vi.fn(),
         },
       ],
       [
@@ -27,7 +28,8 @@ describe('Npc controller isolation', () => {
           npcId: 'npc-civilian',
           netId: 2,
           exists: true,
-          setSyncedState: vi.fn(),
+          setPosition: vi.fn(),
+          setHeading: vi.fn(),
         },
       ],
     ])
@@ -36,10 +38,10 @@ describe('Npc controller isolation', () => {
       getById(id: string) {
         return byId.get(id)
       },
-    } as any
+    }
 
-    const engine = new IntelligenceEngine(npcs, registry)
-    const controllers = new Map<string, any>([
+    const engine = new IntelligenceEngine(npcs as never, registry)
+    const controllers = new Map<string, { id: string; skills: string[] }>([
       ['guard', { id: 'guard', skills: ['guardSkill'] }],
       ['civilian', { id: 'civilian', skills: ['civilianSkill'] }],
     ])

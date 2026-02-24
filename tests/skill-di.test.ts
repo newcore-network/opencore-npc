@@ -3,7 +3,7 @@ import { inject, injectable } from 'tsyringe'
 import { GLOBAL_CONTAINER } from '@open-core/framework'
 import { createServerRuntime, Npcs } from '@open-core/framework/server'
 import { npcIntelligencePlugin } from '../src/server/npc.plugin'
-import { NpcSkill, npcSkill } from '../src/server/decorators/npc-skill.decorator'
+import { NpcSkill } from '../src/server/decorators/npc-skill.decorator'
 import {
   getNpcIntelligentControllers,
   NpcIntelligentController,
@@ -16,7 +16,7 @@ describe('NpcSkill DI integration', () => {
     GLOBAL_CONTAINER.registerInstance('weapon-service', weaponService)
 
     @injectable()
-    @NpcSkill('diPatrol')
+    @NpcSkill()
     class PatrolSkill {
       constructor(@inject('weapon-service') private readonly service: { kind: string }) {}
 
@@ -25,7 +25,7 @@ describe('NpcSkill DI integration', () => {
       }
     }
 
-    @NpcIntelligentController({ id: 'di-controller', skills: [npcSkill(PatrolSkill)] })
+    @NpcIntelligentController({ id: 'di-controller', skills: [PatrolSkill] })
     class DiController {}
 
     const server = createServerRuntime()
@@ -60,7 +60,7 @@ describe('NpcSkill DI integration', () => {
 
     const npc = await api!.spawn({ model: 's_m_y_cop_01', position: { x: 0, y: 0, z: 0 } })
     api!.attach(npc, { controllerId: 'di-controller' })
-    api!.setObservation(npc, { nextSkill: 'diPatrol' })
+    api!.setObservation(npc, { nextSkill: 'patrol' })
     await api!.run(npc)
 
     expect(api!.memory(npc)).toContain('rifle')

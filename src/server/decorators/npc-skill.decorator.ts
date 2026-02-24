@@ -1,48 +1,55 @@
-import type { NpcSkillClass, NpcSkillContract, NpcSkillRef } from '../types'
+import type { NpcContext, NpcSkillClass, SkillResult } from '../types'
 import { NPC_INTELLIGENCE_METADATA } from './metadata-keys'
 
-type SkillCtor = new (...args: any[]) => NpcSkillContract
+/** Contract implemented by all class-based NPC skills. */
+export interface NpcSkill<TArgs = unknown> {
+  validate?(input: unknown): TArgs
+  execute(ctx: NpcContext, args: TArgs): Promise<SkillResult> | SkillResult
+}
 
-const skillCtors: SkillCtor[] = []
+type SkillCtor = new (...args: never[]) => NpcSkill<unknown>
 
-/** Declares a class as a reusable NPC skill. */
-export function NpcSkill(key: string): ClassDecorator {
+const skillCtors = new Set<SkillCtor>()
+
+/**
+ * Marks a class as an NPC skill.
+ *
+ * @remarks
+ * The skill key is derived automatically from the class name.
+ * Example: `GoToCarDriveParkSkill` -> `goToCarDrivePark`.
+ */
+export function NpcSkill(): ClassDecorator {
   return (target) => {
-    Reflect.defineMetadata(NPC_INTELLIGENCE_METADATA.SKILL, key, target)
-    skillCtors.push(target as unknown as SkillCtor)
+    const ctor = target as unknown as SkillCtor
+    const key = deriveSkillKey(ctor.name)
+    Reflect.defineMetadata(NPC_INTELLIGENCE_METADATA.SKILL, key, ctor)
+    skillCtors.add(ctor)
   }
 }
 
+/** Returns all decorated skill classes discovered at load-time. */
 export function getDecoratedNpcSkillClasses(): SkillCtor[] {
-  return [...skillCtors]
+  return Array.from(skillCtors)
 }
 
+/** Resolves the derived skill key from one class constructor. */
 export function getDecoratedNpcSkillKey(target: object): string | undefined {
   return Reflect.getMetadata(NPC_INTELLIGENCE_METADATA.SKILL, target) as string | undefined
 }
 
-/**
- * Creates a strongly-typed skill reference from a decorated skill class.
- *
- * @example
- * ```ts
- * @NpcSkill('driveTo')
- * class DriveToSkill { ... }
- *
- * @NpcIntelligentController({
- *   id: 'driver',
- *   skills: [npcSkill(DriveToSkill)],
- * })
- * class DriverController {}
- * ```
- */
-export function npcSkill<TArgs>(token: NpcSkillClass<TArgs>): NpcSkillRef<TArgs> {
-  const key = getDecoratedNpcSkillKey(token)
+/** Resolves the skill key from a skill class, failing if undecorated. */
+export function skillKeyOf(skillClass: NpcSkillClass): string {
+  const key = getDecoratedNpcSkillKey(skillClass)
   if (!key) {
-    throw new Error(`Skill class '${token.name}' is missing @NpcSkill('key') decorator`)
+    throw new Error(`Skill class '${skillClass.name}' is missing @NpcSkill() decorator`)
   }
-  return {
-    key,
-    token,
+  return key
+}
+
+function deriveSkillKey(className: string): string {
+  const trimmed = className.endsWith('Skill') ? className.slice(0, -'Skill'.length) : className
+  if (!trimmed) {
+    throw new Error('NpcSkill class name cannot be empty')
   }
+  return trimmed.charAt(0).toLowerCase() + trimmed.slice(1)
 }

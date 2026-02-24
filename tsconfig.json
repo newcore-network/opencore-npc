@@ -11,8 +11,13 @@
     "forceConsistentCasingInFileNames": true,
     "declaration": true,
     "sourceMap": false,
+    "noImplicitAny": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "types": ["node", "@citizenfx/server", "@citizenfx/client"]
+    "types": [
+      "node",
+      "@citizenfx/server",
+      "@citizenfx/client"
+    ]
   }
 }

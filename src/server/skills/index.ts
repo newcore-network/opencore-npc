@@ -1,1 +1,6 @@
-export * from './builtin-skill-refs'
+export * from './builtins'
+export * from './go-to-car-drive-park.skill'
+export * from './idle.skill'
+export * from './move-to.skill'
+export * from './set-heading.skill'
+export * from './skill-registry'

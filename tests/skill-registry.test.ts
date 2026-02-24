@@ -1,38 +1,48 @@
 import { describe, expect, it } from 'vitest'
-import { NpcSkill, npcSkill } from '../src/server/decorators/npc-skill.decorator'
-import { createBuiltInSkills } from '../src/server/skills/builtin-skills'
+import { NpcSkill, skillKeyOf } from '../src/server/decorators/npc-skill.decorator'
+import { builtInSkillClasses } from '../src/server/skills/builtins'
 import { NpcSkillRegistry } from '../src/server/skills/skill-registry'
+import { GLOBAL_CONTAINER } from '@open-core/framework'
+import type { NpcContext, SkillResult } from '../src/server/types'
 
 describe('NpcSkillRegistry', () => {
   it('registers built-in skills', () => {
     const registry = new NpcSkillRegistry()
-    registry.registerMany(createBuiltInSkills())
+    for (const cls of builtInSkillClasses()) {
+      GLOBAL_CONTAINER.registerSingleton(cls as never)
+      const instance = GLOBAL_CONTAINER.resolve(cls as never) as {
+        execute: (ctx: NpcContext, args: unknown) => Promise<SkillResult> | SkillResult
+      }
+      registry.register({
+        key: skillKeyOf(cls),
+        execute: (ctx, args) => instance.execute(ctx, args),
+      })
+    }
 
     expect(registry.get('moveTo')).toBeDefined()
     expect(registry.get('idle')).toBeDefined()
   })
 
-  it('creates typed references from class decorators', () => {
-    @NpcSkill('thirdPartySkill')
+  it('creates keys from class decorators', () => {
+    @NpcSkill()
     class ThirdPartySkill {
-      async execute() {
+      async execute(_ctx: NpcContext, _args: unknown) {
         return { ok: true }
       }
     }
 
-    const ref = npcSkill(ThirdPartySkill)
     const registry = new NpcSkillRegistry()
-    const instance = new ref.token()
-    registry.register({ key: ref.key, execute: (ctx, args) => instance.execute(ctx, args) })
+    const instance = new ThirdPartySkill()
+    registry.register({ key: skillKeyOf(ThirdPartySkill), execute: (ctx, args) => instance.execute(ctx, args) })
 
-    expect(registry.get('thirdPartySkill')).toBeDefined()
+    expect(registry.get('thirdParty')).toBeDefined()
   })
 
-  it('overrides duplicate keys with latest registration', () => {
+  it('rejects duplicate keys', () => {
     const registry = new NpcSkillRegistry()
     registry.register({ key: 'dup', async execute() { return { ok: true, memory: 1 } } })
-    registry.register({ key: 'dup', async execute() { return { ok: true, memory: 2 } } })
-
-    expect(registry.has('dup')).toBe(true)
+    expect(() =>
+      registry.register({ key: 'dup', async execute() { return { ok: true, memory: 2 } } }),
+    ).toThrow("NpcSkill 'dup' already registered")
   })
 })

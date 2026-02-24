@@ -6,7 +6,7 @@ export type NpcEventScope = 'server' | 'nearby' | 'owner' | 'all'
  *
  * @typeParam T - Event payload type.
  */
-export type NpcEventEnvelope<T = any> = {
+export type NpcEventEnvelope<T = unknown> = {
   name: string
   npcId: string
   controllerId?: string

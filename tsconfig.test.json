@@ -4,31 +4,5 @@
     "rootDir": ".",
     "noEmit": true
   },
-  "include": [
-    "src/index.ts",
-    "src/shared/index.ts",
-    "src/shared/contracts/npc-types.ts",
-    "src/server/index.ts",
-    "src/server/types.ts",
-    "src/server/api/npc-api.ts",
-    "src/server/npc.plugin.ts",
-    "src/server/ai/llm-provider.ts",
-    "src/server/ai/rule-planner.ts",
-    "src/server/ai/ai-planner.ts",
-    "src/server/engine/intelligence-engine.ts",
-    "src/server/skills/skill-registry.ts",
-    "src/server/skills/builtin-skills.ts",
-    "src/server/decorators/index.ts",
-    "src/server/decorators/metadata-keys.ts",
-    "src/server/decorators/npc.decorator.ts",
-    "src/server/decorators/npc-skill.decorator.ts",
-    "src/server/decorators/npc-hook.decorator.ts",
-    "src/server/decorators/on-npc-event.decorator.ts",
-    "src/client/index.ts",
-    "src/client/npc.client.ts",
-    "src/client/decorators/index.ts",
-    "src/client/decorators/metadata-keys.ts",
-    "src/client/decorators/npc-controller.decorator.ts",
-    "src/client/decorators/on-npc-event.decorator.ts"
-  ]
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
 }

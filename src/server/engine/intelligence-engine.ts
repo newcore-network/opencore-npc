@@ -2,13 +2,14 @@ import type { NPC, Npcs } from '@open-core/framework/server'
 import type { NpcGoal } from '../../shared'
 import type { AttachOptions, NpcContext, NpcPlanner, ResolvedNpcControllerDefinition } from '../types'
 import { NpcRulePlanner } from '../ai/rule-planner'
+import { skillKeyOf } from '../decorators/npc-skill.decorator'
 import { NpcSkillRegistry } from '../skills/skill-registry'
 
 type Agent = {
   npcId: string
   planner: NpcPlanner
   goal: NpcGoal
-  allowSkills: string[]
+  skillKeys: string[]
   observations: Record<string, unknown>
   memory: unknown[]
   state: Map<string, unknown>
@@ -46,13 +47,13 @@ export class IntelligenceEngine {
     const controller = options.controllerId ? controllers.get(options.controllerId) : undefined
     const planner = options.planner ?? toPlanner(controller?.planner)
     const goal = options.goal ?? { id: controller?.id ?? 'default' }
-    const allowSkills = options.skills?.map((item) => item.key) ?? controller?.skills ?? this.skills.keys()
+    const skillKeys = options.skills?.map((item) => skillKeyOf(item)) ?? controller?.skills ?? this.skills.keys()
 
     this.agents.set(npcId, {
       npcId,
       planner,
       goal,
-      allowSkills,
+      skillKeys,
       observations: {},
       memory: [],
       state: new Map<string, unknown>(),
@@ -99,14 +100,14 @@ export class IntelligenceEngine {
     }
 
     const ctx = buildContext(this.npcs, npc, agent)
-    const decision = await agent.planner.decide(ctx)
+    const decision = await agent.planner.decide(ctx, agent.skillKeys)
 
     if (!decision) {
       agent.nextTickAt = Date.now() + agent.tickMs
       return
     }
 
-    if (!agent.allowSkills.includes(decision.skill)) {
+    if (!agent.skillKeys.includes(decision.skill)) {
       agent.memory.push({ at: Date.now(), error: `Skill '${decision.skill}' is not allowed` })
       agent.nextTickAt = Date.now() + agent.tickMs
       return
@@ -143,11 +144,9 @@ function toPlanner(planner: NpcPlanner | undefined): NpcPlanner {
   return planner ?? new NpcRulePlanner()
 }
 
-function buildContext(npcs: Npcs, npcEntity: NPC, agent: Agent): NpcContext {
+function buildContext(_npcs: Npcs, npcEntity: NPC, agent: Agent): NpcContext {
   const ctx: NpcContext = {
-    npc: { id: agent.npcId, netId: npcEntity.netId },
-    npcEntity,
-    npcs,
+    npc: npcEntity,
     goal: agent.goal,
     setGoal(goal) {
       agent.goal = typeof goal === 'string' ? { id: goal } : goal
@@ -162,10 +161,6 @@ function buildContext(npcs: Npcs, npcEntity: NPC, agent: Agent): NpcContext {
       set(key: string, value: unknown): void {
         agent.state.set(key, value)
       },
-    },
-    allowSkills: agent.allowSkills,
-    emit(eventName: string, payload?: unknown): void {
-      npcEntity.setSyncedState(`npc:event:${eventName}`, payload)
     },
   }
   return ctx

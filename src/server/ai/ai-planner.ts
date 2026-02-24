@@ -8,13 +8,16 @@ export class NpcAiPlanner implements NpcPlanner {
     private readonly fallback: NpcPlanner = new NpcRulePlanner(),
   ) {}
 
-  async decide(ctx: Parameters<NpcPlanner['decide']>[0]): Promise<SkillDecision | undefined> {
-    if (ctx.allowSkills.length === 0) return undefined
+  async decide(
+    ctx: Parameters<NpcPlanner['decide']>[0],
+    skillKeys: Parameters<NpcPlanner['decide']>[1],
+  ): Promise<SkillDecision | undefined> {
+    if (skillKeys.length === 0) return undefined
 
     const prompt = [
       'You are deciding one NPC skill.',
       `Goal: ${ctx.goal.id}${ctx.goal.hint ? ` (${ctx.goal.hint})` : ''}`,
-      `Allowed skills: ${ctx.allowSkills.join(', ')}`,
+      `Allowed skills: ${skillKeys.join(', ')}`,
       `Observations: ${JSON.stringify(ctx.observations)}`,
       'Return strict JSON: {"skill":"<allowed>","args":{},"waitMs":0}',
     ].join('\n')
@@ -22,11 +25,11 @@ export class NpcAiPlanner implements NpcPlanner {
     try {
       const raw = await this.llm.complete({ prompt, temperature: 0.2, maxTokens: 200 })
       const decision = parseDecision(raw)
-      if (!decision) return this.fallback.decide(ctx)
-      if (!ctx.allowSkills.includes(decision.skill)) return this.fallback.decide(ctx)
+      if (!decision) return this.fallback.decide(ctx, skillKeys)
+      if (!skillKeys.includes(decision.skill)) return this.fallback.decide(ctx, skillKeys)
       return decision
     } catch {
-      return this.fallback.decide(ctx)
+      return this.fallback.decide(ctx, skillKeys)
     }
   }
 }

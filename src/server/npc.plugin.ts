@@ -14,11 +14,24 @@ import {
   getDecoratedNpcSkillKey,
   getDecoratedNpcSkillClasses,
   NpcSkill as NpcSkillDecorator,
+  skillKeyOf,
 } from './decorators/npc-skill.decorator'
 import { IntelligenceEngine } from './engine/intelligence-engine'
-import { createBuiltInSkills } from './skills/builtin-skills'
+import { builtInSkillClasses } from './skills/builtins'
 import { NpcSkillRegistry } from './skills/skill-registry'
-import type { NpcPlanner, NpcSkillClass, ResolvedNpcControllerDefinition } from './types'
+import type {
+  NpcContext,
+  NpcPlanner,
+  NpcSkillClass,
+  ResolvedNpcControllerDefinition,
+  SkillResult,
+} from './types'
+import type { NpcSkill as NpcSkillContract } from './decorators/npc-skill.decorator'
+
+type SkillInstance = {
+  validate?: (input: unknown) => unknown
+  execute: (ctx: NpcContext, args: unknown) => Promise<SkillResult> | SkillResult
+}
 
 export type NpcIntelligencePluginOptions = {
   /** Default tick interval for attached agents when not defined by controller. */
@@ -39,26 +52,18 @@ export function npcIntelligencePlugin(options: NpcIntelligencePluginOptions = {}
 
       const npcs = GLOBAL_CONTAINER.resolve(Npcs)
       const skills = new NpcSkillRegistry()
-      skills.registerMany(createBuiltInSkills())
+      for (const skillClass of builtInSkillClasses()) {
+        registerSkillClass(skills, skillClass)
+      }
 
       for (const SkillClass of getDecoratedNpcSkillClasses()) {
-        const key = getDecoratedNpcSkillKey(SkillClass)
-        if (!key) {
-          continue
-        }
-        const resolved = GLOBAL_CONTAINER.resolve(SkillClass as never) as unknown as {
-          execute: (ctx: any, args?: unknown) => Promise<any> | any
-        }
-        skills.register({
-          key,
-          execute: (ctx, args) => resolved.execute.call(resolved, ctx, args),
-        })
+        registerSkillClass(skills, SkillClass)
       }
 
       const controllers = getNpcIntelligentControllers()
       for (const def of controllers.values()) {
-        for (const ref of def.skills ?? []) {
-          registerSkillClass(skills, ref.token)
+        for (const skillClass of def.skills ?? []) {
+          registerSkillClass(skills, skillClass)
         }
       }
 
@@ -75,7 +80,7 @@ export function npcIntelligencePlugin(options: NpcIntelligencePluginOptions = {}
               : def.planner === 'rule' || !def.planner
                 ? new NpcRulePlanner()
                 : (def.planner as NpcPlanner),
-          skills: def.skills?.map((item) => item.key),
+          skills: def.skills?.map((item) => skillKeyOf(item)),
           tickMs: def.tickMs ?? options.defaultTickMs,
         })
       }
@@ -105,12 +110,18 @@ function registerSkillClass(skills: NpcSkillRegistry, skillClass: NpcSkillClass)
     return
   }
 
-  const resolved = GLOBAL_CONTAINER.resolve(skillClass as never) as unknown as {
-    execute: (ctx: any, args?: unknown) => Promise<any> | any
+  const resolved = GLOBAL_CONTAINER.resolve(skillClass as never) as unknown as NpcSkillContract<unknown>
+
+  const skill: SkillInstance = {
+    validate: resolved.validate,
+    execute: resolved.execute as (ctx: NpcContext, args: unknown) => Promise<SkillResult> | SkillResult,
   }
 
   skills.register({
     key,
-    execute: (ctx, args) => resolved.execute.call(resolved, ctx, args),
+    execute: (ctx, args) => {
+      const validated = typeof skill.validate === 'function' ? skill.validate(args) : args
+      return skill.execute.call(resolved, ctx, validated)
+    },
   })
 }

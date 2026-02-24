@@ -1,7 +1,8 @@
-import type { NPC, Npcs } from '@open-core/framework/server'
-import type { NpcGoal, NpcIdentity } from '../shared'
+import type { NPC } from '@open-core/framework/server'
+import type { NpcGoal } from '../shared'
+import type { NpcSkill } from './decorators/npc-skill.decorator'
 
-/** Result returned by a skill execution. */
+/** Result returned by one skill execution. */
 export type SkillResult = {
   ok: boolean
   waitMs?: number
@@ -9,40 +10,16 @@ export type SkillResult = {
   error?: string
 }
 
-/** Planner decision for the next skill execution. */
+/** Planner decision selecting the next skill to execute. */
 export type SkillDecision = {
   skill: string
   args?: unknown
   waitMs?: number
 }
 
-/** Constructor type for class-based NPC skills. */
-export type NpcSkillClass<TArgs = unknown> = new (...args: any[]) => {
-  execute(ctx: NpcContext, args?: TArgs): Promise<SkillResult> | SkillResult
-}
-
-/** Typed reference to a registered class-based NPC skill. */
-export type NpcSkillRef<TArgs = unknown> = {
-  key: string
-  token: NpcSkillClass<TArgs>
-}
-
-/** Runtime skill contract consumed by the engine. */
-export type NpcSkillContract = {
-  key: string
-  execute(ctx: NpcContext, args?: unknown): Promise<SkillResult> | SkillResult
-}
-
-/** Planner contract used to select the next skill. */
-export type NpcPlanner = {
-  decide(ctx: NpcContext): Promise<SkillDecision | undefined> | SkillDecision | undefined
-}
-
-/** Context provided to planners and skill executions. */
+/** Runtime context passed to planners and skills. */
 export type NpcContext = {
-  npc: NpcIdentity
-  npcEntity: NPC
-  npcs: Npcs
+  npc: NPC
   goal: NpcGoal
   setGoal(goal: string | NpcGoal): void
   observations: Record<string, unknown>
@@ -51,31 +28,46 @@ export type NpcContext = {
     get<T>(key: string): T | undefined
     set(key: string, value: unknown): void
   }
-  allowSkills: string[]
-  emit(eventName: string, payload?: unknown): void
 }
 
-/** Controller definition used by the decorator registry. */
+/** Constructor type for class-based skills. */
+export type NpcSkillClass<TArgs = unknown> = new (...args: never[]) => NpcSkill<TArgs>
+
+/** Planner contract used by the intelligence engine. */
+export type NpcPlanner = {
+  decide(
+    ctx: NpcContext,
+    skillKeys: string[],
+  ): Promise<SkillDecision | undefined> | SkillDecision | undefined
+}
+
+/** Controller definition used by decorators and plugin bootstrap. */
 export type NpcIntelligentControllerDefinition = {
   id: string
   planner?: 'rule' | 'ai' | NpcPlanner
-  skills?: NpcSkillRef[]
+  skills?: NpcSkillClass[]
   tickMs?: number
 }
 
-/** Runtime options for attaching intelligence to one NPC. */
+/** Options used when attaching intelligence to one NPC. */
 export type AttachOptions = {
   controllerId?: string
   planner?: NpcPlanner
   goal?: NpcGoal
   tickMs?: number
-  skills?: NpcSkillRef[]
+  skills?: NpcSkillClass[]
 }
 
-/** Internal resolved controller contract used by runtime engine. */
+/** Internal resolved controller shape used by the runtime engine. */
 export type ResolvedNpcControllerDefinition = {
   id: string
   planner?: NpcPlanner
   skills?: string[]
   tickMs?: number
+}
+
+/** Internal runtime skill used by the registry and engine. */
+export type RegisteredNpcSkill = {
+  key: string
+  execute(ctx: NpcContext, args?: unknown): Promise<SkillResult> | SkillResult
 }
