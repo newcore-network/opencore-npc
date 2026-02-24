@@ -2,6 +2,7 @@ import { GLOBAL_CONTAINER } from '@open-core/framework'
 import { Npcs, type OpenCorePlugin } from '@open-core/framework/server'
 import { NpcAiPlanner } from './ai/ai-planner'
 import type { LLMProvider } from './ai/llm-provider'
+import { createOpenRouterProvider, type OpenRouterProviderConfig } from './ai/openrouter-provider'
 import { NpcRulePlanner } from './ai/rule-planner'
 import { IntelligentNpcAPI } from './api/npc-api'
 import {
@@ -22,6 +23,7 @@ import { NpcSkillRegistry } from './skills/skill-registry'
 import type {
   NpcContext,
   NpcPlanner,
+  NpcIntelligenceDebugConfig,
   NpcSkillClass,
   ResolvedNpcControllerDefinition,
   SkillResult,
@@ -38,6 +40,10 @@ export type NpcIntelligencePluginOptions = {
   defaultTickMs?: number
   /** Optional LLM provider used by controllers that select `planner: 'ai'`. */
   llmProvider?: LLMProvider
+  /** Optional OpenRouter config. API key always from env when omitted. */
+  openRouter?: OpenRouterProviderConfig
+  /** Optional debug configuration. */
+  debug?: NpcIntelligenceDebugConfig
 }
 
 /** Installs the NPC intelligence runtime and decorator bindings. */
@@ -52,6 +58,19 @@ export function npcIntelligencePlugin(options: NpcIntelligencePluginOptions = {}
 
       const npcs = GLOBAL_CONTAINER.resolve(Npcs)
       const skills = new NpcSkillRegistry()
+      const llmProvider =
+        options.llmProvider ??
+        createOpenRouterProvider(options.openRouter, {
+          enabled: options.debug?.enabled,
+          llm: options.debug?.llm,
+        })
+
+      if (!llmProvider && options.debug?.enabled) {
+        console.warn(
+          '[npc-intelligence] OPENROUTER_API_KEY is missing. AI controllers will use rule planner fallback.',
+        )
+      }
+
       for (const skillClass of builtInSkillClasses()) {
         registerSkillClass(skills, skillClass)
       }
@@ -68,6 +87,7 @@ export function npcIntelligencePlugin(options: NpcIntelligencePluginOptions = {}
       }
 
       const engine = new IntelligenceEngine(npcs, skills)
+      engine.setDebug(options.debug)
       const api = new IntelligentNpcAPI(npcs, engine)
 
       const resolvedControllers = new Map<string, ResolvedNpcControllerDefinition>()
@@ -75,8 +95,8 @@ export function npcIntelligencePlugin(options: NpcIntelligencePluginOptions = {}
         resolvedControllers.set(id, {
           id,
           planner:
-            def.planner === 'ai' && options.llmProvider
-              ? new NpcAiPlanner(options.llmProvider)
+            def.planner === 'ai' && llmProvider
+              ? new NpcAiPlanner(llmProvider, new NpcRulePlanner(), def.ai ?? {}, options.debug, id)
               : def.planner === 'rule' || !def.planner
                 ? new NpcRulePlanner()
                 : (def.planner as NpcPlanner),

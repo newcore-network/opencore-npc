@@ -1,6 +1,7 @@
 import type { NPC } from '@open-core/framework/server'
 import type { NpcGoal } from '../shared'
 import type { NpcSkill } from './decorators/npc-skill.decorator'
+import type { LlmGenerationConfig } from './ai/llm-provider'
 
 /** Result returned by one skill execution. */
 export type SkillResult = {
@@ -47,6 +48,15 @@ export type NpcIntelligentControllerDefinition = {
   planner?: 'rule' | 'ai' | NpcPlanner
   skills?: NpcSkillClass[]
   tickMs?: number
+  ai?: {
+    model?: string
+    temperature?: number
+    maxTokens?: number
+    topP?: number
+    timeoutMs?: number
+    systemPrompt?: string
+    perSkill?: Record<string, LlmGenerationConfig>
+  }
 }
 
 /** Options used when attaching intelligence to one NPC. */
@@ -64,6 +74,13 @@ export type ResolvedNpcControllerDefinition = {
   planner?: NpcPlanner
   skills?: string[]
   tickMs?: number
+}
+
+/** Debug options for runtime and AI decisions. */
+export type NpcIntelligenceDebugConfig = {
+  enabled?: boolean
+  runtime?: boolean
+  llm?: boolean
 }
 
 /** Internal runtime skill used by the registry and engine. */

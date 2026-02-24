@@ -1,6 +1,12 @@
 import type { NPC, Npcs } from '@open-core/framework/server'
 import type { NpcGoal } from '../../shared'
-import type { AttachOptions, NpcContext, NpcPlanner, ResolvedNpcControllerDefinition } from '../types'
+import type {
+  AttachOptions,
+  NpcContext,
+  NpcIntelligenceDebugConfig,
+  NpcPlanner,
+  ResolvedNpcControllerDefinition,
+} from '../types'
 import { NpcRulePlanner } from '../ai/rule-planner'
 import { skillKeyOf } from '../decorators/npc-skill.decorator'
 import { NpcSkillRegistry } from '../skills/skill-registry'
@@ -20,6 +26,7 @@ type Agent = {
 export class IntelligenceEngine {
   private readonly agents = new Map<string, Agent>()
   private timer: ReturnType<typeof setInterval> | undefined
+  private debug: NpcIntelligenceDebugConfig = {}
 
   constructor(
     private readonly npcs: Npcs,
@@ -37,6 +44,10 @@ export class IntelligenceEngine {
     if (!this.timer) return
     clearInterval(this.timer)
     this.timer = undefined
+  }
+
+  setDebug(debug: NpcIntelligenceDebugConfig | undefined): void {
+    this.debug = debug ?? {}
   }
 
   attach(
@@ -60,15 +71,19 @@ export class IntelligenceEngine {
       tickMs: options.tickMs ?? controller?.tickMs ?? 500,
       nextTickAt: Date.now(),
     })
+
+    this.logRuntime(`attach npc=${npcId} goal=${goal.id} skills=${skillKeys.join(',')}`)
   }
 
   detach(npcId: string): void {
     this.agents.delete(npcId)
+    this.logRuntime(`detach npc=${npcId}`)
   }
 
   setObservation(npcId: string, patch: Record<string, unknown>): void {
     const agent = this.requireAgent(npcId)
     agent.observations = { ...agent.observations, ...patch }
+    this.logRuntime(`observe npc=${npcId} patch=${JSON.stringify(patch)}`)
   }
 
   memory(npcId: string): unknown[] {
@@ -101,6 +116,9 @@ export class IntelligenceEngine {
 
     const ctx = buildContext(this.npcs, npc, agent)
     const decision = await agent.planner.decide(ctx, agent.skillKeys)
+    this.logRuntime(
+      `decide npc=${agent.npcId} decision=${decision ? decision.skill : 'none'} allowed=${agent.skillKeys.join(',')}`,
+    )
 
     if (!decision) {
       agent.nextTickAt = Date.now() + agent.tickMs
@@ -109,6 +127,7 @@ export class IntelligenceEngine {
 
     if (!agent.skillKeys.includes(decision.skill)) {
       agent.memory.push({ at: Date.now(), error: `Skill '${decision.skill}' is not allowed` })
+      this.logRuntime(`reject npc=${agent.npcId} skill=${decision.skill} reason=not-allowed`)
       agent.nextTickAt = Date.now() + agent.tickMs
       return
     }
@@ -116,11 +135,15 @@ export class IntelligenceEngine {
     const skill = this.skills.get(decision.skill)
     if (!skill) {
       agent.memory.push({ at: Date.now(), error: `Skill '${decision.skill}' not found` })
+      this.logRuntime(`reject npc=${agent.npcId} skill=${decision.skill} reason=missing-skill`)
       agent.nextTickAt = Date.now() + agent.tickMs
       return
     }
 
     const result = await skill.execute(ctx, decision.args)
+    this.logRuntime(
+      `execute npc=${agent.npcId} skill=${decision.skill} ok=${result.ok} waitMs=${result.waitMs ?? decision.waitMs ?? agent.tickMs}`,
+    )
     if (result.memory !== undefined) {
       agent.memory.push(result.memory)
     } else if (result.error) {
@@ -137,6 +160,11 @@ export class IntelligenceEngine {
       throw new Error(`NPC '${npcId}' is not attached`)
     }
     return agent
+  }
+
+  private logRuntime(message: string): void {
+    if (!(this.debug.enabled && this.debug.runtime)) return
+    console.log(`[npc-intelligence][runtime] ${message}`)
   }
 }
 

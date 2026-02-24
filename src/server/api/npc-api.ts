@@ -1,5 +1,5 @@
-import type { NpcSpawnOptions, Npcs } from '@open-core/framework/server'
-import type { NpcGoal, NpcIdentity, NpcSpawnInput } from '../../shared'
+import type { NPC, NpcSpawnOptions, Npcs } from '@open-core/framework/server'
+import type { NpcGoal, NpcSpawnInput } from '../../shared'
 import type { AttachOptions, ResolvedNpcControllerDefinition } from '../types'
 import { IntelligenceEngine } from '../engine/intelligence-engine'
 
@@ -10,8 +10,8 @@ export class IntelligentNpcAPI {
     private readonly engine: IntelligenceEngine,
   ) { }
 
-  /** Spawns an NPC through framework core and returns its identity. */
-  async spawn(input: NpcSpawnInput): Promise<NpcIdentity> {
+  /** Spawns an NPC through framework core and returns the NPC entity. */
+  async spawn(input: NpcSpawnInput): Promise<NPC> {
     const options: NpcSpawnOptions = {
       model: input.model,
       position: input.position,
@@ -26,50 +26,47 @@ export class IntelligentNpcAPI {
     if (!result.success || !npc) {
       throw new Error(result.error ?? 'Failed to spawn NPC')
     }
-    return {
-      id: npc.npcId,
-      netId: npc.netId,
-    }
+    return npc
   }
 
   /** Destroys an NPC and detaches its intelligence runtime. */
-  destroy(npc: NpcIdentity): void {
-    this.engine.detach(npc.id)
-    this.npcs.deleteById(npc.id)
+  destroy(npc: NPC): void {
+    this.engine.detach(npc.npcId)
+    this.npcs.deleteById(npc.npcId)
   }
 
   /** Attaches intelligence runtime to an existing NPC. */
-  attach(npc: NpcIdentity, options: AttachOptions = {}): void {
-    this.engine.attach(npc.id, options, this.controllers)
+  attach(npc: NPC, options: AttachOptions = {}): void {
+    this.engine.attach(npc.npcId, options, this.controllers)
   }
 
   /** Detaches intelligence runtime from an NPC. */
-  detach(npc: NpcIdentity): void {
-    this.engine.detach(npc.id)
+  detach(npc: NPC): void {
+    this.engine.detach(npc.npcId)
   }
 
   /** Merges an observation patch for planner input. */
-  setObservation(npc: NpcIdentity, patch: Record<string, unknown>): void {
-    this.engine.setObservation(npc.id, patch)
+  setObservation(npc: NPC, patch: Record<string, unknown>): void {
+    this.engine.setObservation(npc.npcId, patch)
   }
 
   /** Creates a fluent observation handle for one NPC. */
-  observe<TObservation extends Record<string, unknown>>(npc: NpcIdentity): NpcObservationHandle<TObservation> {
+  observe<TObservation extends Record<string, unknown>>(npc: NPC): NpcObservationHandle<TObservation> {
     return new NpcObservationHandle<TObservation>(this, npc)
   }
 
   /** Runs a single intelligence tick for one NPC. */
-  async run(npc: NpcIdentity): Promise<void> {
-    await this.engine.runOnce(npc.id)
+  async run(npc: NPC): Promise<void> {
+    await this.engine.runOnce(npc.npcId)
   }
 
   /** Returns runtime memory entries for one NPC. */
-  memory(npc: NpcIdentity): unknown[] {
-    return this.engine.memory(npc.id)
+  memory(npc: NPC): unknown[] {
+    return this.engine.memory(npc.npcId)
   }
 
   /** Creates a fluent runtime handle for one NPC agent. */
-  agent(npc: NpcIdentity): NpcAgentHandle {
+  agent(npc: NPC): NpcAgentHandle {
     return new NpcAgentHandle(this, npc)
   }
 
@@ -84,7 +81,7 @@ export class IntelligentNpcAPI {
 export class NpcObservationHandle<TObservation extends Record<string, unknown>> {
   constructor(
     private readonly api: IntelligentNpcAPI,
-    private readonly npc: NpcIdentity,
+    private readonly npc: NPC,
   ) { }
 
   set(patch: Partial<TObservation> & Record<string, unknown>): this {
@@ -96,7 +93,7 @@ export class NpcObservationHandle<TObservation extends Record<string, unknown>> 
 export class NpcAgentHandle {
   constructor(
     private readonly api: IntelligentNpcAPI,
-    private readonly npc: NpcIdentity,
+    private readonly npc: NPC,
   ) { }
 
   run(): Promise<void> {
