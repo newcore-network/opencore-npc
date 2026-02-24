@@ -1,7 +1,7 @@
 export type { NpcGoal, NpcSpawnInput } from '../shared'
 
 export { NpcIntelligentController } from './decorators/npc.decorator'
-export { NpcSkill } from './decorators/npc-skill.decorator'
+export { NpcSkill, skillKey } from './decorators/npc-skill.decorator'
 export { OnNpcHook } from './decorators/npc-hook.decorator'
 export { OnNpcEvent } from './decorators/on-npc-event.decorator'
 
@@ -14,6 +14,8 @@ export type {
   NpcContext,
   SkillResult,
   SkillDecision,
+  RunResult,
+  SkillArgs,
   NpcIntelligentControllerDefinition,
   AttachOptions,
   NpcIntelligenceDebugConfig,

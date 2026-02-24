@@ -94,6 +94,8 @@ export function npcIntelligencePlugin(options: NpcIntelligencePluginOptions = {}
       for (const [id, def] of controllers.entries()) {
         resolvedControllers.set(id, {
           id,
+          name: def.name,
+          npcType: def.npcType,
           planner:
             def.planner === 'ai' && llmProvider
               ? new NpcAiPlanner(llmProvider, new NpcRulePlanner(), def.ai ?? {}, options.debug, id)

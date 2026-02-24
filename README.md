@@ -18,6 +18,7 @@ Default server entrypoint exports only the core surface:
 - `npcIntelligencePlugin`
 - `IntelligentNpcAPI`
 - `NpcIntelligentController`, `NpcSkill`, `OnNpcHook`, `OnNpcEvent`
+- `skillKey(SkillClass)` helper
 - core types: `NpcContext`, `SkillResult`, `NpcIntelligentControllerDefinition`
 - built-in skills: `IdleSkill`, `MoveToSkill`, `MoveRelativeSkill`, `SetHeadingSkill`, `WaitSkill`, `LookAtEntitySkill`, `GoToCarDriveParkSkill`
 
@@ -54,13 +55,16 @@ class RuleDriverController {
       networked: true,
     })
 
-    this.npcInt.attach(npc, { controllerId: 'rule-driver' })
-    this.npcInt.setObservation(npc, {
-      nextSkill: 'goToCarDrivePark',
-      vehicleNetId,
-      dest: { x: 120, y: -760, z: 26 },
-    })
-    await this.npcInt.run(npc)
+    await this.npcInt
+      .rule('rule-driver')
+      .for(npc)
+      .name('Valentine Driver')
+      .npcType('driver')
+      .do(GoToCarDriveParkSkill, {
+        vehicleNetId,
+        dest: { x: 120, y: -760, z: 26 },
+      })
+      .run()
   }
 }
 ```
@@ -118,6 +122,21 @@ await Server.init({
 class AiDriverController {}
 ```
 
+Use AI builder context (instead of raw `setObservation`) for readability:
+
+```ts
+await npcInt
+  .ai('ai-driver')
+  .for(npc)
+  .name('Courier #4')
+  .npcType('courier')
+  .goal('deliver-order', 'arrive quickly but safely')
+  .instruction('Take vehicle 120 and park near the player')
+  .playerPos(player)
+  .deny(WaitSkill)
+  .run()
+```
+
 ## Skills
 
 - Skills are class-based and must use `@NpcSkill()`.
@@ -125,6 +144,7 @@ class AiDriverController {}
   - `MoveToSkill` -> `moveTo`
   - `GoToCarDriveParkSkill` -> `goToCarDrivePark`
 - Controllers use class references directly: `skills: [MoveToSkill, WaitSkill]`.
+- Rule runner infers args from skill class: `do(MoveToSkill, { x, y, z })`.
 
 ### Custom Skill
 
@@ -173,6 +193,12 @@ import {
   createOpenRouterProvider,
 } from '@open-core/npc-intelligence/server/advanced'
 ```
+
+## Rule vs AI
+
+- `rule(...)`: deterministic. Programmer chooses exact skill(s), sequence, and arguments.
+- `ai(...)`: planner chooses the next skill from the controller skill list using current context.
+- Both return explicit `RunResult` (`ok`, `done`, `skill`, `waitMs`, `error`).
 
 ## Notes
 

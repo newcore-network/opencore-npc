@@ -46,6 +46,11 @@ export function skillKeyOf(skillClass: NpcSkillClass): string {
   return key
 }
 
+/** Convenience alias that returns the derived key for a skill class. */
+export function skillKey(skillClass: NpcSkillClass): string {
+  return skillKeyOf(skillClass)
+}
+
 function deriveSkillKey(className: string): string {
   const trimmed = className.endsWith('Skill') ? className.slice(0, -'Skill'.length) : className
   if (!trimmed) {

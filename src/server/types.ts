@@ -11,6 +11,16 @@ export type SkillResult = {
   error?: string
 }
 
+/** Result returned by one engine run invocation. */
+export type RunResult = {
+  ok: boolean
+  done: boolean
+  skill?: string
+  waitMs?: number
+  memory?: unknown
+  error?: string
+}
+
 /** Planner decision selecting the next skill to execute. */
 export type SkillDecision = {
   skill: string
@@ -21,6 +31,8 @@ export type SkillDecision = {
 /** Runtime context passed to planners and skills. */
 export type NpcContext = {
   npc: NPC
+  name?: string
+  npcType?: string
   goal: NpcGoal
   setGoal(goal: string | NpcGoal): void
   observations: Record<string, unknown>
@@ -33,6 +45,10 @@ export type NpcContext = {
 
 /** Constructor type for class-based skills. */
 export type NpcSkillClass<TArgs = unknown> = new (...args: never[]) => NpcSkill<TArgs>
+
+/** Inferred argument type for a class-based skill. */
+export type SkillArgs<TSkill extends NpcSkillClass> =
+  TSkill extends NpcSkillClass<infer TArgs> ? TArgs : never
 
 /** Planner contract used by the intelligence engine. */
 export type NpcPlanner = {
@@ -48,6 +64,8 @@ export type NpcIntelligentControllerDefinition = {
   planner?: 'rule' | 'ai' | NpcPlanner
   skills?: NpcSkillClass[]
   tickMs?: number
+  name?: string
+  npcType?: string
   ai?: {
     model?: string
     temperature?: number
@@ -66,11 +84,16 @@ export type AttachOptions = {
   goal?: NpcGoal
   tickMs?: number
   skills?: NpcSkillClass[]
+  denySkills?: NpcSkillClass[]
+  name?: string
+  npcType?: string
 }
 
 /** Internal resolved controller shape used by the runtime engine. */
 export type ResolvedNpcControllerDefinition = {
   id: string
+  name?: string
+  npcType?: string
   planner?: NpcPlanner
   skills?: string[]
   tickMs?: number
