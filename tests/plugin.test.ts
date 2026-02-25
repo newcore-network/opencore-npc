@@ -4,7 +4,7 @@ import { createServerRuntime, Npcs } from '@open-core/framework/server'
 import { npcIntelligencePlugin } from '../src/server/npc.plugin'
 
 describe('npcIntelligencePlugin', () => {
-  it('registers server API extensions', async () => {
+  it('registers server API extensions and runtime services', async () => {
     const server = createServerRuntime()
     const register = vi.fn()
     const plugin = npcIntelligencePlugin()
@@ -16,6 +16,12 @@ describe('npcIntelligencePlugin', () => {
     } as never)
 
     await plugin.install({
+      server,
+      di: { register },
+      config: { get: vi.fn() },
+    })
+
+    await (plugin as any).start?.({
       server,
       di: { register },
       config: { get: vi.fn() },

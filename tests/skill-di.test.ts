@@ -49,11 +49,15 @@ describe('NpcSkill DI integration', () => {
       deleteById: vi.fn(),
     } as never)
 
-    await npcIntelligencePlugin().install({
+    const plugin = npcIntelligencePlugin()
+    const pluginContext = {
       server,
       di: { register },
       config: { get: vi.fn() },
-    })
+    }
+
+    await plugin.install(pluginContext)
+    await (plugin as any).start?.(pluginContext)
 
     expect(getNpcIntelligentControllers().get('di-controller')).toBeDefined()
     expect(api).toBeDefined()

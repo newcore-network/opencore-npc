@@ -1,7 +1,7 @@
 {
   "name": "@open-core/npc-intelligence",
-  "version": "0.1.1",
-  "description": "Official NPC + AI plugin for OpenCore",
+  "version": "0.1.0",
+  "description": "Official Intelligent NPC + AI plugin for OpenCore, using Skills and ContextBuilders",
   "license": "MPL-2.0",
   "type": "commonjs",
   "main": "dist/index.js",

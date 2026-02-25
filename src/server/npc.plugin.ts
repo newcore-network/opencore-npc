@@ -1,5 +1,5 @@
 import { GLOBAL_CONTAINER } from '@open-core/framework'
-import { Npcs, type OpenCorePlugin } from '@open-core/framework/server'
+import { Npcs, type OpenCorePlugin, type PluginInstallContext } from '@open-core/framework/server'
 import { NpcAiPlanner } from './ai/ai-planner'
 import type { LLMProvider } from './ai/llm-provider'
 import { createOpenRouterProvider, type OpenRouterProviderConfig } from './ai/openrouter-provider'
@@ -48,15 +48,16 @@ export type NpcIntelligencePluginOptions = {
 
 /** Installs the NPC intelligence runtime and decorator bindings. */
 export function npcIntelligencePlugin(options: NpcIntelligencePluginOptions = {}): OpenCorePlugin {
-  return {
+  const plugin: OpenCorePlugin & { start(ctx: PluginInstallContext): void } = {
     name: 'npc-intelligence',
     install(ctx) {
       ctx.server.registerApiExtension('NpcIntelligentController', NpcIntelligentController)
       ctx.server.registerApiExtension('NpcSkill', NpcSkillDecorator)
       ctx.server.registerApiExtension('OnNpcHook', OnNpcHook)
       ctx.server.registerApiExtension('OnNpcEvent', OnNpcEvent)
+    },
 
-      const npcs = GLOBAL_CONTAINER.resolve(Npcs)
+    start(ctx) {
       const skills = new NpcSkillRegistry()
       const llmProvider =
         options.llmProvider ??
@@ -86,6 +87,7 @@ export function npcIntelligencePlugin(options: NpcIntelligencePluginOptions = {}
         }
       }
 
+      const npcs = GLOBAL_CONTAINER.resolve(Npcs)
       const engine = new IntelligenceEngine(npcs, skills)
       engine.setDebug(options.debug)
       const api = new IntelligentNpcAPI(npcs, engine)
@@ -115,6 +117,8 @@ export function npcIntelligencePlugin(options: NpcIntelligencePluginOptions = {}
       ctx.di.register(IntelligentNpcAPI, api)
     },
   }
+
+  return plugin
 }
 
 declare module '@open-core/framework/server' {
