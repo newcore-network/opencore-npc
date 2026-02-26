@@ -38,7 +38,7 @@ export class GoToCarDriveParkSkill implements NpcSkillContract<GoToCarDriveParkA
       return { ok: false, error: 'goToCarDrivePark requires dest { x, y, z }' }
     }
 
-    const pedHandle = ctx.npc.handle
+    const pedHandle = ctx.npc.getHandle()
     const vehicleHandle = getVehicleHandle(args.vehicleNetId)
     if (!vehicleHandle) {
       return {
