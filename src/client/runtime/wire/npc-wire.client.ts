@@ -6,7 +6,7 @@ export type NpcClientExecutor = {
 
 /** Handles server wire execution requests on the client side. */
 export class NpcWireClient {
-  constructor(private readonly executor: NpcClientExecutor) {}
+  constructor(private readonly executor: NpcClientExecutor) { }
 
   /** Executes one request and maps it to wire response format. */
   async onExecute(msg: NpcExecuteSkillMsg): Promise<NpcSkillResultMsg> {
