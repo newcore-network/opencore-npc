@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import { GLOBAL_CONTAINER } from '@open-core/framework'
 import { createServerRuntime, Npcs } from '@open-core/framework/server'
-import { npcIntelligencePlugin } from '../src/server/npc.plugin'
+import { NPCAgentsPlugin } from '../src/server/npc.plugin'
 
 describe('npcIntelligencePlugin', () => {
   it('registers server API extensions and runtime services', async () => {
     const server = createServerRuntime()
     const register = vi.fn()
-    const plugin = npcIntelligencePlugin()
+    const plugin = NPCAgentsPlugin()
 
     GLOBAL_CONTAINER.registerInstance(Npcs, {
       getById: vi.fn(),
@@ -42,6 +42,6 @@ describe('npcIntelligencePlugin', () => {
   })
 
   it('exposes a stable plugin name', () => {
-    expect(npcIntelligencePlugin().name).toBe('npc-intelligence')
+    expect(NPCAgentsPlugin().name).toBe('npc-intelligence')
   })
 })

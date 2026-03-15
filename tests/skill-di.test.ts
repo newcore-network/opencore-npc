@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { inject, injectable } from 'tsyringe'
 import { GLOBAL_CONTAINER } from '@open-core/framework'
 import { createServerRuntime, Npcs } from '@open-core/framework/server'
-import { npcIntelligencePlugin } from '../src/server/npc.plugin'
+import { NPCAgentsPlugin } from '../src/server/npc.plugin'
 import { NpcSkill } from '../src/server/decorators/npc-skill.decorator'
 import {
   getNpcIntelligentControllers,
@@ -18,7 +18,7 @@ describe('NpcSkill DI integration', () => {
     @injectable()
     @NpcSkill()
     class PatrolSkill {
-      constructor(@inject('weapon-service') private readonly service: { kind: string }) {}
+      constructor(@inject('weapon-service') private readonly service: { kind: string }) { }
 
       async execute() {
         return { ok: true as const, memory: this.service.kind }
@@ -26,7 +26,7 @@ describe('NpcSkill DI integration', () => {
     }
 
     @NpcIntelligentController({ id: 'di-controller', skills: [PatrolSkill] })
-    class DiController {}
+    class DiController { }
 
     const server = createServerRuntime()
     let api: IntelligentNpcAPI | undefined
@@ -49,7 +49,7 @@ describe('NpcSkill DI integration', () => {
       deleteById: vi.fn(),
     } as never)
 
-    const plugin = npcIntelligencePlugin()
+    const plugin = NPCAgentsPlugin()
     const pluginContext = {
       server,
       di: { register },

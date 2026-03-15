@@ -47,7 +47,7 @@ export type NpcIntelligencePluginOptions = {
 }
 
 /** Installs the NPC intelligence runtime and decorator bindings. */
-export function npcIntelligencePlugin(options: NpcIntelligencePluginOptions = {}): OpenCorePlugin {
+export function NPCAgentsPlugin(options: NpcIntelligencePluginOptions = {}): OpenCorePlugin {
   const plugin: OpenCorePlugin & { start(ctx: PluginInstallContext): void } = {
     name: 'npc-intelligence',
     install(ctx) {

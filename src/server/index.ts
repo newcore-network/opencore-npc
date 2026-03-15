@@ -5,7 +5,7 @@ export { NpcSkill, skillKey } from './decorators/npc-skill.decorator'
 export { OnNpcHook } from './decorators/npc-hook.decorator'
 export { OnNpcEvent } from './decorators/on-npc-event.decorator'
 
-export { npcIntelligencePlugin } from './npc.plugin'
+export { NPCAgentsPlugin } from './npc.plugin'
 export type { NpcIntelligencePluginOptions } from './npc.plugin'
 
 export { IntelligentNpcAPI, NpcIntelligence } from './api/npc-api'
